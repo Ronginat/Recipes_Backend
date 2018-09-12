@@ -98,7 +98,10 @@ exports.handler = function(request, context, callback) {
     console.log('received event');
     
     if(request['pathParameters'] != undefined && request['pathParameters']['lastmodified'] != undefined){
-        checkTableTime(request['pathParameters']['lastmodified'], checkTableTimeCallback, callback);
+      checkTableTime(request['pathParameters']['lastmodified'], checkTableTimeCallback, callback);
+    }
+    else if(request['queryStringParameters'] != undefined && request['queryStringParameters']['LastModified'] != undefined) {
+      checkTableTime(request['queryStringParameters']['LastModified'], checkTableTimeCallback, callback);
     }
     else{
       scanTable(callback);

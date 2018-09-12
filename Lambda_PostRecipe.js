@@ -21,7 +21,7 @@ function setResponse(status, body){
 
 function getUsername(token){
     let params = {
-        AccessToken: token /* required */
+        AccessToken: token
       };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
