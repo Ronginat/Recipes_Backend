@@ -6,6 +6,7 @@ const Promise = require('promise');
 
 AWS.config.update({region: process.env['REGION']});
 const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+const s3 = new AWS.S3();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
 
@@ -65,45 +66,90 @@ function putItemInRecipes(body, Username) {
             } 
             else {
                 console.log("Success recipe PUT", data);
-                return resolve(data);
+                return resolve(data.Item);
             }
         });
     });
 }
 
-function addToPending(numOfFiles, recipe) {
-    let fileNames = generateFileNames(numOfFiles, recipe);
-
+function addToPending(recipe, fileNames) {
+    const Table = process.env['PEND_TABLE'];
     let params = {
-        TableName: process.env['PEND_TABLE'],
-        Item: {
-            'id' : {S: recipe.id},
-            'uploader': {S: recipe.uploader},
-            'files': {SS: fileNames},
-            'createdAt': {S: recipe.createdAt},
+        RequestItems: {
+            Table: [
+
+            ]
         }
     };
 
+    for(let i = 0; i < fileNames.length; i++) {
+        params.RequestItems.Table.push({
+            PutRequest: {
+                Item: {
+                    "fileName": {"S": fileNames[i]},
+                    "createdAt": {"S": recipe.createdAt},
+                    "id" : {"S": recipe.id},
+                    "uploader": {"S": recipe.uploader}
+                }
+            }
+        });
+    }
+
+    // let params = {
+    //     TableName: process.env['PEND_TABLE'],
+    //     Item: {
+    //         'id' : {S: recipe.id},
+    //         'uploader': {S: recipe.uploader},
+    //         'files': {SS: fileNames},
+    //         'createdAt': {S: recipe.createdAt},
+    //     }
+    // };
+
     return new Promise((resolve, reject) => {
         // Call DynamoDB to add the item to the table
-        ddb.putItem(params, function(err, data) {
+        ddb.batchWriteItem(params, function(err, data) {
             if (err) {
-                console.log("Error pend PUT", err);
+                console.log("Error pend batch PUT", err);
                 return reject(err);
             } 
             else {
-                console.log("Success pend PUT", data);
-                return resolve(data);
+                let results = [];
+                console.log("Success pend batch PUT", data);
+                data['ItemCollectionMetrics'].forEach(element => {
+                    results.push(element['ItemCollectionKey']['fileName']);
+                });
+                return resolve(results);
             }
         });
     });
+}
+
+function signUrls(fileNames) {
+    const myBucket = process.env['BUCKET'];
+    const myKeys = fileNames;
+    const signedUrlExpireSeconds = 60 * 5; //5 minutes
+    let i = 0;
+
+    let params = {
+        Bucket: myBucket,
+        Key: myKeys[i],
+        Expires: signedUrlExpireSeconds
+    }
+
+    let urls = [];
+    for(i = 0; i < myKeys.length; i++) {
+        params['Key'] = myKeys[i];
+        urls[i] = s3.getSignedUrl('putObject', params, onUrl);
+    }
+
+    return urls;
 }
 
 function generateFileNames(numOfFiles, recipe) {
     let i, name = recipe.name;
     let files = [], genId = shortid.generate();
     for(i = 0; i < numOfFiles; i++){
-        files[i] = name + i.toString() + "--" + genId + process.env['FILE_EXTENTION'];
+        files[i] = name + i.toString() + "--" + genId + "." + process.env['FILE_EXTENTION'];
     }
     return files;
 }
@@ -113,11 +159,18 @@ exports.handler = async function(event, context, callback) {
     //let categories = JSON.parse(body.categories);
 
     try {
+        let results = {};
         let username = await getUsername(event.multyValueHeaders.Authorization[0].AccessToken);
-        let data = await putItemInRecipes(eventBody, username);
-        let pend = await addToPending(eventBody.numOfFiles, data.Item);
-        data['pendFiles'] = pend.Item;
-        callback(setResponse(200, data));        
+        let recipeItem = await putItemInRecipes(eventBody, username);
+        let fileNames = generateFileNames(numOfFiles, data.Item);
+        let pend = await addToPending(eventBody.numOfFiles, data.Item, fileNames);
+        let urls = signUrls(fileNames);
+
+        results['Item'] = recipeItem;
+        results['fileNames'] = fileNames;
+        results['urls'] = urls;
+        
+        callback(setResponse(200, results));        
     } catch(err) {
         callback(setResponse(500, err));
     }

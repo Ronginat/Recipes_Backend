@@ -4,7 +4,7 @@ const AWS = require('aws-sdk');
 AWS.config.update({region: process.env['REGION']});
 
 // Create DynamoDB service object
-const docClient = new AWS.DynamoDB({apiVersion: '2012-08-10'});
+const ddb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
 
 //const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -49,7 +49,7 @@ exports.handler = function(request, context, callback) {
     
     let listData = [];
 
-    docClient.query(params, onQuery);
+    ddb.query(params, onQuery);
 
     function onQuery(err, data) {
       if (err) {
@@ -65,7 +65,7 @@ exports.handler = function(request, context, callback) {
           if (typeof data.LastEvaluatedKey != "undefined") {
               console.log("Scanning for more...");
               params.ExclusiveStartKey = data.LastEvaluatedKey;
-              docClient.query(params, onQuery);
+              ddb.query(params, onQuery);
           } else {
             console.log("Scan Success, item count = ", listData.length);
             response.body = JSON.stringify(listData);
