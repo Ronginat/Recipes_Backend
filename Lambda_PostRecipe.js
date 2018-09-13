@@ -1,5 +1,6 @@
 const AWS = require('aws-sdk');
 const uuidv4 = require('uuid/v4');
+const shortid = require('shortid');
 const moment = require('moment-timezone');
 const Promise = require('promise');
 
@@ -37,11 +38,11 @@ function getUsername(token){
     });
 }
 
-function putItemInRecipes(body, Username){
+function putItemInRecipes(body, Username) {
     let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
 
     let params = {
-        TableName: process.env['TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Item: {
             'id' : {S: uuidv4()},
             'sharedKey': process.env['SHARED_KEY'],
@@ -59,15 +60,52 @@ function putItemInRecipes(body, Username){
         // Call DynamoDB to add the item to the table
         ddb.putItem(params, function(err, data) {
             if (err) {
-                console.log("Error PUT", err);
+                console.log("Error recipe PUT", err);
                 return reject(err);
             } 
             else {
-                console.log("Success PUT", data);
+                console.log("Success recipe PUT", data);
                 return resolve(data);
             }
         });
     });
+}
+
+function addToPending(numOfFiles, recipe) {
+    let fileNames = generateFileNames(numOfFiles, recipe);
+
+    let params = {
+        TableName: process.env['PEND_TABLE'],
+        Item: {
+            'id' : {S: recipe.id},
+            'uploader': {S: recipe.uploader},
+            'files': {SS: fileNames},
+            'createdAt': {S: recipe.createdAt},
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        ddb.putItem(params, function(err, data) {
+            if (err) {
+                console.log("Error pend PUT", err);
+                return reject(err);
+            } 
+            else {
+                console.log("Success pend PUT", data);
+                return resolve(data);
+            }
+        });
+    });
+}
+
+function generateFileNames(numOfFiles, recipe) {
+    let i, name = recipe.name;
+    let files = [], genId = shortid.generate();
+    for(i = 0; i < numOfFiles; i++){
+        files[i] = name + i.toString() + "--" + genId + process.env['FILE_EXTENTION'];
+    }
+    return files;
 }
 
 exports.handler = async function(event, context, callback) {
@@ -75,8 +113,10 @@ exports.handler = async function(event, context, callback) {
     //let categories = JSON.parse(body.categories);
 
     try {
-        let username = await getUsername(event.AccessToken);
+        let username = await getUsername(event.multyValueHeaders.Authorization[0].AccessToken);
         let data = await putItemInRecipes(eventBody, username);
+        let pend = await addToPending(eventBody.numOfFiles, data.Item);
+        data['pendFiles'] = pend.Item;
         callback(setResponse(200, data));        
     } catch(err) {
         callback(setResponse(500, err));
