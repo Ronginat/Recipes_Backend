@@ -9,12 +9,12 @@ const ddb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
 //const docClient = new AWS.DynamoDB.DocumentClient();
 
 let params = {
- Limit: process.env['LIMIT'],
- TableName: process.env['TABLE'],
- IndexName: process.env['INDEX'],
- KeyConditionExpression: "sharedKey = :v_key AND lastModifiedAt >= :v_time",
- ScanIndexForward: false,
- ReturnConsumedCapacity: "TOTAL"
+    Limit: process.env['LIMIT'],
+    TableName: process.env['TABLE'],
+    IndexName: process.env['INDEX'],
+    KeyConditionExpression: "sharedKey = :v_key AND lastModifiedAt >= :v_time",
+    ScanIndexForward: false,
+    ReturnConsumedCapacity: "TOTAL"
 };
 
 

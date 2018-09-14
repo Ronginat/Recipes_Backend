@@ -39,8 +39,8 @@ function getUsername(token){
     });
 }
 
-function putItemInRecipes(body, Username) {
-    let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
+function putItemInRecipes(body, username) {
+    const date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
 
     let params = {
         TableName: process.env['RECIPE_TABLE'],
@@ -49,7 +49,7 @@ function putItemInRecipes(body, Username) {
             'sharedKey': process.env['SHARED_KEY'],
             'name' : {S: body.name},
             'description': {S: body},
-            'uploader': {S: Username},
+            'uploader': {S: username},
             'categories': {SS: JSON.parse(body.categories)},
             'createdAt': {S: date},
             'lastModifiedAt': {S: date},
@@ -95,16 +95,6 @@ function addToPending(recipe, fileNames) {
         });
     }
 
-    // let params = {
-    //     TableName: process.env['PEND_TABLE'],
-    //     Item: {
-    //         'id' : {S: recipe.id},
-    //         'uploader': {S: recipe.uploader},
-    //         'files': {SS: fileNames},
-    //         'createdAt': {S: recipe.createdAt},
-    //     }
-    // };
-
     return new Promise((resolve, reject) => {
         // Call DynamoDB to add the item to the table
         ddb.batchWriteItem(params, function(err, data) {
@@ -113,12 +103,11 @@ function addToPending(recipe, fileNames) {
                 return reject(err);
             } 
             else {
-                let results = [];
                 console.log("Success pend batch PUT", data);
-                data['ItemCollectionMetrics'].forEach(element => {
-                    results.push(element['ItemCollectionKey']['fileName']);
-                });
-                return resolve(results);
+                // data['UnproccessedItems'].forEach(element => {
+                //     results.push(element['PutRequest']['fileName']);
+                // });
+                return resolve(data);
             }
         });
     });
@@ -145,13 +134,22 @@ function signUrls(fileNames) {
     return urls;
 }
 
-function generateFileNames(numOfFiles, recipe) {
-    let i, name = recipe.name;
-    let files = [], genId = shortid.generate();
-    for(i = 0; i < numOfFiles; i++){
-        files[i] = name + i.toString() + "--" + genId + "." + process.env['FILE_EXTENTION'];
+function generateFileNames(numOfFiles, recipe, extention) {
+    let allowedExtenstions = ["jpg", "jpeg", "png"];
+    if(!allowedExtenstions.indexOf(extention) > -1) {
+        throw "extention not supported";
     }
-    return files;
+    else if(numOfFiles > process.env['MAX_FILES_PER_RECIPE']) {
+        throw "too many files!";
+    }
+    else {
+        let i, name = process.env['FOLDER'] + "/" + recipe.name;
+        let files = [], genId = shortid.generate();
+        for(i = 0; i < numOfFiles; i++){
+            files[i] = name + i.toString() + "--" + genId + "." + process.env['FILE_EXTENTION'];
+        }
+        return files;
+    }
 }
 
 exports.handler = async function(event, context, callback) {
@@ -161,17 +159,19 @@ exports.handler = async function(event, context, callback) {
     try {
         let results = {};
         let username = await getUsername(event.multyValueHeaders.Authorization[0].AccessToken);
+        let fileNames = generateFileNames(numOfFiles, data.Item, eventBody['extention']);
         let recipeItem = await putItemInRecipes(eventBody, username);
-        let fileNames = generateFileNames(numOfFiles, data.Item);
         let pend = await addToPending(eventBody.numOfFiles, data.Item, fileNames);
         let urls = signUrls(fileNames);
+
+        //if (Object.keys(pend.UnprocessedItems).length === 0)
 
         results['Item'] = recipeItem;
         results['fileNames'] = fileNames;
         results['urls'] = urls;
         
-        callback(setResponse(200, results));        
+        callback(null, setResponse(200, results));        
     } catch(err) {
-        callback(setResponse(500, err));
+        callback(null, setResponse(400, err));
     }
 };
