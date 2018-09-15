@@ -153,12 +153,12 @@ function generateFileNames(numOfFiles, recipe, extention) {
 }
 
 exports.handler = async function(event, context, callback) {
-    let eventBody = event.body;
+    let eventBody = JSON.parse(event['body']);
     //let categories = JSON.parse(body.categories);
 
     try {
         let results = {};
-        let username = await getUsername(event.multyValueHeaders.Authorization[0].AccessToken);
+        let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         let fileNames = generateFileNames(numOfFiles, data.Item, eventBody['extention']);
         let recipeItem = await putItemInRecipes(eventBody, username);
         let pend = await addToPending(eventBody.numOfFiles, data.Item, fileNames);
@@ -170,7 +170,7 @@ exports.handler = async function(event, context, callback) {
         results['fileNames'] = fileNames;
         results['urls'] = urls;
         
-        callback(null, setResponse(200, results));        
+        callback(null, setResponse(200, JSON.stringify(results)));        
     } catch(err) {
         callback(null, setResponse(400, err));
     }

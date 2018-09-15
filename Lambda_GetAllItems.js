@@ -4,9 +4,8 @@ const AWS = require('aws-sdk');
 AWS.config.update({region: process.env['REGION']});
 
 // Create DynamoDB service object
-const ddb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
-
-//const docClient = new AWS.DynamoDB.DocumentClient();
+//const ddb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
+const docClient = new AWS.DynamoDB.DocumentClient();
 
 let params = {
     Limit: process.env['LIMIT'],
@@ -33,12 +32,12 @@ exports.handler = function(request, context, callback) {
     console.log('requested time: '+ date);
     
     let ExpressionAttributeValues = {
-        ":v_key": {"S": process.env['SHARED_KEY']},
-        ":v_time": {"S": date}
-    }
+        ":v_key": process.env['SHARED_KEY'],
+        ":v_time": date
+    };
     
     params['ExpressionAttributeValues'] = ExpressionAttributeValues;
-  //try {
+
     let response = {
       headers: {
           'Content-Type': 'application/json'
@@ -49,7 +48,7 @@ exports.handler = function(request, context, callback) {
     
     let listData = [];
 
-    ddb.query(params, onQuery);
+    docClient.query(params, onQuery);
 
     function onQuery(err, data) {
       if (err) {
@@ -65,7 +64,7 @@ exports.handler = function(request, context, callback) {
           if (typeof data.LastEvaluatedKey != "undefined") {
               console.log("Scanning for more...");
               params.ExclusiveStartKey = data.LastEvaluatedKey;
-              ddb.query(params, onQuery);
+              docClient.query(params, onQuery);
           } else {
             console.log("Scan Success, item count = ", listData.length);
             response.body = JSON.stringify(listData);
@@ -73,4 +72,4 @@ exports.handler = function(request, context, callback) {
           }
       }
   }
-}
+};
