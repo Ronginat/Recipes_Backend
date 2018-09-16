@@ -1,15 +1,11 @@
 const AWS = require('aws-sdk');
-const uuidv4 = require('uuid/v4');
 const shortid = require('shortid');
 //const moment = require('moment-timezone');
-//const Promise = require('promise');
 
 AWS.config.update({region: process.env['REGION']});
-const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();
+const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const s3 = new AWS.S3();
-const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
-
 
 function setResponse(status, body){
     let response = {
@@ -37,61 +33,42 @@ function dateToString() {
             + ':' + (seconds <= 9 ? '0' + seconds : seconds);
 }
 
-function getUsername(token){
-    let params = {
-        AccessToken: token
-      };
-    return new Promise((resolve, reject) => {
-        cognitoidentityserviceprovider.getUser(params, function(err, data) {
-            if (err) {
-                console.log(err); // an error occurred
-                return reject(err);
-            }
-            else {
-                console.log(data); // successful response
-                return resolve(data.Username);
-            }    
-        });
-    });
-}
-
-function putItemInRecipes(body, username) {
-    //const date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
-    const date = dateToString();
-
+function getItemFromRecipes(id) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
-        Item: {
-            'id' : uuidv4(),
-            'sharedKey': process.env['SHARED_KEY'],
-            'name' : body.name,
-            'description': body.description,
-            'uploader': username,
-            'categories': docClient.createSet(body.categories),
-            'createdAt': date,
-            'lastModifiedAt': date,
-            'likes': 0,
+        Key: {
+            "id": id,
+            "sharedKey": process.env['SHARED_KEY']
+        },
+        "ProjectionExpression": "id, #recipeName, foodFiles",
+        "ExpressionAttributeNames": {
+            "#recipeName": "name"
         }
     };
 
     return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        docClient.put(params, function(err, data) {
+        // Call DynamoDB to read the item from the table
+        docClient.get(params, function(err, data) {
             if (err) {
-                console.log("Error recipe PUT", err);
+                console.log("Error recipe GET", err);
                 return reject(err);
             } 
             else {
-                console.log("Success recipe PUT", data);
+                console.log("Success recipe GET", data);
                 return resolve(data.Item);
             }
         });
     });
 }
 
-function addToPending(recipe, fileNames) {
-    //const date = dateToString();
+function addToPending(recipe, recipe, fileNames) {
+    const date = dateToString();
     const Table = process.env['PEND_TABLE'];
+    // let params = {
+    //     RequestItems: {
+            
+    //     }
+    // };
 
     let i = 0, filesArray = [];
     for(i = 0; i < fileNames.length; i++) {
@@ -99,14 +76,13 @@ function addToPending(recipe, fileNames) {
             PutRequest: {
                 Item: {
                     "fileName": {"S": fileNames[i]},
-                    "createdAt": {"S": recipe.createdAt},
-                    "id" : {"S": recipe.id},
-                    "uploader": {"S": recipe.uploader}
+                    "createdAt": {"S": date},
+                    "id" : {"S": recipe.id}
                 }
             }
         });
     }
-
+    //params.RequestItems[Table] = filesArray;
     const params = {
         RequestItems: {
             Table: filesArray
@@ -140,16 +116,22 @@ function generateFileNames(numOfFiles, recipe, extension) {
         throw "too many files!";
     }
     else {
+        let length = 0;
+        if(recipe['foodFiles'] != undefined) {
+            length = recipe['foodFiles'].length;
+        }
         let i, name = process.env['FOLDER'] + "/" + recipe.name;
         let files = [], genId = shortid.generate();
-        for(i = 0; i < numOfFiles; i++){
-            files[i] = name + i.toString() + "--" + genId + "." + extension;
+        for(i = length; i < numOfFiles + length; i++){
+            files[i-length] = name + i.toString() + "--food--" + genId + "." + extension;
         }
+        console.log("files\n" + files);
         return files;
     }
 }
 
 function signUrls(fileNames) {
+    console.log('start sign urls');
     const myBucket = process.env['BUCKET'];
     const signedUrlExpireSeconds = 60 * 5; //5 minutes
     let i = 0;
@@ -170,24 +152,32 @@ function signUrls(fileNames) {
 }
 
 exports.handler = async function(event, context, callback) {
+    console.log(event);
     let eventBody = JSON.parse(event['body']);
     //let categories = JSON.parse(body.categories);
 
     try {
-        let results = {};
-        let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
-        let recipeItem = await putItemInRecipes(eventBody, username);
+        let results = {}, id;
+        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['id'] != undefined) {
+            id = event['queryStringParameters']['id'];
+        }
+        else {
+            throw "request must contain recipe id";
+        }
+        //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
+        let recipeItem = await getItemFromRecipes(id);
         let fileNames = generateFileNames(eventBody['numOfFiles'], recipeItem, eventBody['extension']);
         let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
         let urls = signUrls(fileNames);
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
-        results['Item'] = recipeItem;
+        //results['Item'] = recipeItem;
         results['fileNames'] = fileNames;
         results['urls'] = urls;
         
-        callback(null, setResponse(200, JSON.stringify(results)));        
+        callback(null, setResponse(200, JSON.stringify(results)));
+
     } catch(err) {
         callback(null, setResponse(400, err));
     }

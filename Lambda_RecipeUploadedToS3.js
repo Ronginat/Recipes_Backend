@@ -1,9 +1,9 @@
 const AWS = require('aws-sdk');
-const moment = require('moment-timezone');
-const Promise = require('promise');
+//const moment = require('moment-timezone');
 
 AWS.config.update({region: process.env['REGION']});
 const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 // const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
@@ -26,27 +26,41 @@ const s3 = new AWS.S3();
 //     });
 // }
 
+function dateToString() {
+    const date = new Date();
+    var day = date.getUTCDate();
+    var month = date.getUTCMonth() + 1;
+    var year = date.getUTCFullYear();
+
+    const hours = date.getUTCHours();
+    const minutes = date.getUTCMinutes();
+    const seconds = date.getUTCSeconds();
+
+    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
+            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
+            + ':' + (seconds <= 9 ? '0' + seconds : seconds);
+}
+
 function updateItemInRecipes(pendItem) {
-    let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
+    //let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
+    const date = dateToString();
 
     let params = {
         TableName: process.env['RECIPE_TABLE'],
-        Item: {
-            Key: {
-                'id' : {S: pendItem.id},
-                'sharedKey': process.env['SHARED_KEY'],
-            },
-            UpdateExpression : "SET #attrList = list_append(#attrList, :listValue), #attrDate = :dateValue",
-            ExpressionAttributeNames : {
-                "#attrList" : "recipeFiles",
-                "#attrDate": "lastModifiedAt"
-            },
-            ExpressionAttributeValues : {
-                ":listValue": {"L": [ { "S": pendItem.fileName }]},
-                ":dateValue": {"S": date}
-            },
-            ReturnValues: "ALL_OLD | ALL_NEW"
-        }
+        Key: {
+            "id" : {"S": pendItem.id},
+            "sharedKey": {"S": process.env['SHARED_KEY']},
+        },
+        UpdateExpression : "SET #attrList = list_append(#attrList, :listValue), #attrDate = :dateValue",
+        ExpressionAttributeNames : {
+            "#attrList" : "recipeFiles",
+            "#attrDate": "lastModifiedAt"
+        },
+        ExpressionAttributeValues : {
+            ":listValue": {"L": [ { "S": pendItem.fileName }]},
+            ":dateValue": {"S": date}
+        },
+        ReturnValues: "UPDATED_NEW "
     };
 
     return new Promise((resolve, reject) => {
@@ -80,7 +94,7 @@ function removeFromPending(key) {
 
     return new Promise((resolve, reject) => {
         // Call DynamoDB to add the item to the table
-        ddb.deleteItem(params, function(err, data) {
+        docClient.delete(params, function(err, data) {
             if (err) {
                 console.log("Error pend DELETE", err);
                 return reject(err);
@@ -121,7 +135,7 @@ function deleteFromS3(bucket, key) {
 }
 
 exports.handler = async function(event, context) {
-    let record = event['body']['Records'][0]['s3'];
+    let record = event['Records'][0]['s3'];
     let uploadedName = record['object']['key'];
     let bucket = record['bucket']['name'];
 
@@ -132,7 +146,7 @@ exports.handler = async function(event, context) {
         console.log("recipe upload successfully.\n" + JSON.stringify(updatedRecipeItem));
 
     } catch(err) {
-        console.log("error when uplading recipe.\n" + err);
+        console.log("error when uploading recipe.\n" + err);
         console.log("deleting file from bucket...");
         await deleteFromS3(bucket, uploadedName);
     }

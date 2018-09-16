@@ -7,15 +7,13 @@ AWS.config.update({region: process.env['REGION']});
 //const ddb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
 const docClient = new AWS.DynamoDB.DocumentClient();
 
-let params = {
-    Limit: process.env['LIMIT'],
-    TableName: process.env['TABLE'],
-    IndexName: process.env['INDEX'],
-    KeyConditionExpression: "sharedKey = :v_key AND lastModifiedAt >= :v_time",
-    ScanIndexForward: false,
-    ReturnConsumedCapacity: "TOTAL"
-};
-
+let response = {
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: '',
+    statusCode: 200
+  };
 
 // handleHttpRequest is the entry point for Lambda requests
 exports.handler = function(request, context, callback) {
@@ -31,20 +29,24 @@ exports.handler = function(request, context, callback) {
     
     console.log('requested time: '+ date);
     
-    let ExpressionAttributeValues = {
-        ":v_key": process.env['SHARED_KEY'],
-        ":v_time": date
+    let params = {
+        Limit: process.env['LIMIT'],
+        TableName: process.env['TABLE'],
+        IndexName: process.env['INDEX'],
+        KeyConditionExpression: "sharedKey = :v_key AND lastModifiedAt >= :v_time",
+        ExpressionAttributeValues: {
+            ":v_key": process.env['SHARED_KEY'],
+            ":v_time": date
+        },
+        ScanIndexForward: false,
+        ReturnConsumedCapacity: "TOTAL"
     };
+    // let ExpressionAttributeValues = {
+    //     ":v_key": process.env['SHARED_KEY'],
+    //     ":v_time": date
+    // };
     
-    params['ExpressionAttributeValues'] = ExpressionAttributeValues;
-
-    let response = {
-      headers: {
-          'Content-Type': 'application/json'
-      },
-      body: '',
-      statusCode: 200
-    };
+    // params['ExpressionAttributeValues'] = ExpressionAttributeValues;
     
     let listData = [];
 

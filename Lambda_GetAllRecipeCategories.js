@@ -5,7 +5,7 @@ AWS.config.update({region: process.env['REGION']});
 
 // Create DynamoDB service object
 let docClient = new AWS.DynamoDB.DocumentClient();
-//let docClient = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+//let ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 
 
 function setResponse(status, body){
@@ -19,36 +19,29 @@ function setResponse(status, body){
   return response;
 }
 
-function checkTableTime(lastModified, myCallBack, handlerCallBack){
-  console.log('requested time: '+ lastModified);
-  if(lastModified == 0){
-    myCallBack(false, handlerCallBack);
-  }
-  else{
-    const params = {
-      TableName: process.env['TABLE'],
-      Key: {
-        name: "last-modified"
-      }
-    };
-      
-    docClient.getItem(params, function(err, data){
+function checkTableTime(){
+  const params = {
+    TableName: process.env['TABLE'],
+    Key: {
+      name: "last-modified"
+    }
+  };
+  return new Promise((resolve, reject) => {    
+    docClient.get(params, function(err, data){
       if(err){
         console.log("Error", err);
-        handlerCallBack(err);
+        reject(err);
       }
       else{
         //console.log("Success", data.Item);
-        let lastModifiedTable = data.Item['date']['S'];
-        let result = lastModified >= lastModifiedTable;
         //console.log("up to date? " + result);
-        myCallBack(result, handlerCallBack);
+        resolve(data.Item['date']);
       }
     });
-  }
+  });
 }
 
-function scanTable(callback){
+function scanTable(){
   const params = {
      TableName: process.env['TABLE'],
      Limit: process.env['LIMIT'],
@@ -56,54 +49,60 @@ function scanTable(callback){
     
   let listData = [];
 
-  docClient.scan(params, onScan);
+  return new Promise((resolve, reject) => {
+    docClient.scan(params, onScan);
 
-  function onScan(err, data) {
-    if (err) {
-        console.error("Unable to scan the table. Error JSON:", JSON.stringify(err, null, 2));
-        callback(err);
-    } 
-    else {
-      console.log("Scan succeeded. ", JSON.stringify(data.Items));
-      listData = listData.concat(data.Items);
-
-      // scan can retrieve a maximum of 1MB of data
-      if (typeof data.LastEvaluatedKey != "undefined") {
-          console.log("Scanning for more...");
-          params.ExclusiveStartKey = data.LastEvaluatedKey;
-          docClient.scan(params, onScan);
-      } else {
-        console.log("Scan Success, item count = ", listData.length);
-
-        callback(err, setResponse(200, JSON.stringify(listData)));
+    function onScan(err, data) {
+      if (err) {
+          console.error("Unable to scan the table. Error JSON:", JSON.stringify(err, null, 2));
+          reject(err);
+      } 
+      else {
+        console.log("Scan succeeded. ", JSON.stringify(data.Items));
+        listData = listData.concat(data.Items);
+  
+        // scan can retrieve a maximum of 1MB of data
+        if (typeof data.LastEvaluatedKey != "undefined") {
+            console.log("Scanning for more...");
+            params['ExclusiveStartKey'] = data.LastEvaluatedKey;
+            docClient.scan(params, onScan);
+        } else {
+          console.log("Scan Success, item count = ", listData.length);
+          resolve(listData);
+        }
       }
     }
-  }
+  });
 }
-
-function checkTableTimeCallback(result, callback){
-  console.log("result received = " + result);
-  if(result){
-    callback(null, setResponse(304, "not modified"));
-      //setResponse(304, {'items': 'not modified'});
-  }
-  else{
-    scanTable(callback);
-  }
-}
-
 
 // handleHttpRequest is the entry point for Lambda requests
-exports.handler = function(request, context, callback) {
-    console.log('received event\n' + JSON.stringify(request));
-    
-    if(request['pathParameters'] != undefined && request['pathParameters']['lastmodified'] != undefined){
-      checkTableTime(request['pathParameters']['lastmodified'], checkTableTimeCallback, callback);
+exports.handler = async function(event, context, callback) {
+    console.log('received event\n' + JSON.stringify(event));
+    console.log("query string: " + event['queryStringParameters']['lastModified']);
+    let lastModified = "0";
+    if(event['pathParameters'] != undefined && event['pathParameters']['lastmodified'] != undefined){
+      lastModified = event['pathParameters']['lastmodified'];
     }
-    else if(request['queryStringParameters'] != undefined && request['queryStringParameters']['LastModified'] != undefined) {
-      checkTableTime(request['queryStringParameters']['LastModified'], checkTableTimeCallback, callback);
+    else if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModified'] != undefined) {
+      lastModified = event['queryStringParameters']['lastModified'];
     }
-    else{
-      scanTable(callback);
+
+    try {
+      console.log('requested time: '+ lastModified);
+      if(lastModified !== "0") {
+        const lastModifiedTable = await checkTableTime();
+        
+        console.log("table time " + lastModifiedTable);
+
+        if(lastModified >= lastModifiedTable) {
+          callback(null, setResponse(304, "not modified"));
+        }
+      }
+
+      const scanResults = await scanTable();
+      callback(null, setResponse(200, JSON.stringify(scanResults)));
+    }
+    catch(err) {
+      callback(err); 
     }
 };

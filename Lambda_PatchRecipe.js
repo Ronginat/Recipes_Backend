@@ -1,15 +1,15 @@
 const AWS = require('aws-sdk');
-const moment = require('moment-timezone');
-const Promise = require('promise');
+//const moment = require('moment-timezone');
+//const Promise = require('promise');
 
 AWS.config.update({region: process.env['REGION']});
-const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+//const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const documentClient = new AWS.DynamoDB.DocumentClient();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
 const freePatch = ["likes", "discussion"];
 const authPatch = ["description", "categories"];
-const forbidPatch = ["id", "name", "recipeFiles", "foodFiles", "createdAt", "sharedKey", "thumbnail", "uploader", "pendingImages", "lastModifiedAt"];
+const forbidPatch = ["id", "name", "recipeFiles", "foodFiles", "createdAt", "sharedKey", "thumbnail", "uploader", "lastModifiedAt"];
 
 
 function setResponse(status, body){
@@ -21,6 +21,21 @@ function setResponse(status, body){
     };
       
     return response;
+}
+
+function dateToString() {
+    const date = new Date();
+    var day = date.getUTCDate();
+    var month = date.getUTCMonth() + 1;
+    var year = date.getUTCFullYear();
+
+    const hours = date.getUTCHours();
+    const minutes = date.getUTCMinutes();
+    const seconds = date.getUTCSeconds();
+
+    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
+            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
+            + ':' + (seconds <= 9 ? '0' + seconds : seconds);
 }
 
 function getUsername(token){
@@ -53,7 +68,7 @@ function getUploader(key) {
 
     return new Promise((resolve, reject) => {
         // Call DynamoDB to add the item to the table
-        ddb.getItem(params, function(err, data) {
+        documentClient.get(params, function(err, data) {
             if (err) {
                 console.log("Error GET", err);
                 return reject(err);
@@ -93,7 +108,7 @@ function updateItemInRecipes(id, attributes) {
                 return reject(err);
             } 
             else {
-                console.log("Success recipe UPDATE", SON.stringify(data));
+                console.log("Success recipe UPDATE", JSON.stringify(data));
                 return resolve(data['Attributes']);
             }
         });
@@ -101,7 +116,8 @@ function updateItemInRecipes(id, attributes) {
 }
 
 function generateExpressionAttributes(attributes) {
-    let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
+    //let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
+    let date = dateToString();
     let Updates = "SET ";
     let Values = {};
 
