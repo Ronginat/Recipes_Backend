@@ -7,9 +7,9 @@ AWS.config.update({region: process.env['REGION']});
 const documentClient = new AWS.DynamoDB.DocumentClient();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
-const freePatch = ["likes", "discussion"];
+const freePatch = ["likes", "comments"];
 const authPatch = ["description", "categories"];
-const forbidPatch = ["id", "name", "recipeFiles", "foodFiles", "createdAt", "sharedKey", "thumbnail", "uploader", "lastModifiedAt"];
+const forbidPatch = ["id", "name", "recipeFiles", "foodFile", "createdAt", "sharedKey", "uploader", "lastModifiedAt"];
 
 
 function setResponse(status, body){
@@ -127,9 +127,9 @@ function generateExpressionAttributes(attributes) {
                 Updates = Updates.concat("likes = likes + :likeValue, ");
                 Values[':likeValue'] = 1;
                 break;
-            case "discussion":
-                Updates = Updates.concat("discussion = list_append(discussion, :discussValue), ");
-                Values[':discussValue'] = [attributes[value]];
+            case "comments":
+                Updates = Updates.concat("comments = list_append(comments, :commValue), ");
+                Values[':commValue'] = [attributes[value]];
                 break;
             case "description":
                 Updates = Updates.concat("description = :descValue, ");

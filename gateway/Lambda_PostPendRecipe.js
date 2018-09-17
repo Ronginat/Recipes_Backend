@@ -1,7 +1,6 @@
 const AWS = require('aws-sdk');
 const uuidv4 = require('uuid/v4');
-const shortid = require('shortid');
-//const moment = require('moment-timezone');
+const nanoid = require('nanoid');
 //const Promise = require('promise');
 
 AWS.config.update({region: process.env['REGION']});
@@ -18,7 +17,6 @@ function setResponse(status, body){
         body: body,
         statusCode: status
     };
-      
     return response;
 }
 
@@ -55,22 +53,20 @@ function getUsername(token){
     });
 }
 
-function putItemInRecipes(body, username) {
-    //const date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
+function putRecipeInPendings(recipe, username, fileNames, contentName) {
     const date = dateToString();
 
     const params = {
-        TableName: process.env['RECIPE_TABLE'],
+        TableName: process.env['PEND_TABLE'],
         Item: {
-            'id' : shortid.generate(),
-            'sharedKey': process.env['SHARED_KEY'],
-            'name' : body.name,
-            'description': body.description,
+            'fileName': contentName,
+            'id' : id,
+            'name' : recipe.name,
+            'description': recipe.description,
             'uploader': username,
-            'categories': docClient.createSet(body.categories),
+            'categories': docClient.createSet(recipe.categories),
             'createdAt': date,
-            'lastModifiedAt': date,
-            'likes': 0,
+            'pendImages': fileNames
         }
     };
 
@@ -89,49 +85,49 @@ function putItemInRecipes(body, username) {
     });
 }
 
-function addToPending(recipe, fileNames) {
-    //const date = dateToString();
-    const Table = process.env['PEND_RRECIPES_`TABLE'];
+// function addFilesToPendings(recipe, fileNames) {
+//     //const date = dateToString();
+//     const Table = process.env['PEND_HTML'];
 
-    let i = 0, filesArray = [];
-    for(i = 0; i < fileNames.length; i++) {
-        filesArray.push({
-            PutRequest: {
-                Item: {
-                    "fileName": {"S": fileNames[i]},
-                    "createdAt": {"S": recipe.createdAt},
-                    "id" : {"S": recipe.id},
-                    "uploader": {"S": recipe.uploader}
-                }
-            }
-        });
-    }
+//     let i = 0, filesArray = [];
+//     for(i = 0; i < fileNames.length; i++) {
+//         filesArray.push({
+//             PutRequest: {
+//                 Item: {
+//                     "fileName": {"S": fileNames[i]},
+//                     "createdAt": {"S": recipe.createdAt},
+//                     "id" : {"S": recipe.id},
+//                     "uploader": {"S": recipe.uploader}
+//                 }
+//             }
+//         });
+//     }
 
-    const params = {
-        RequestItems: {
-            Table: filesArray
-        }
-    };
+//     const params = {
+//         RequestItems: {
+//             Table: filesArray
+//         }
+//     };
 
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        ddb.batchWriteItem(params, function(err, data) {
-            if (err) {
-                console.log("Error pend batch PUT", err);
-                return reject(err);
-            } 
-            else {
-                console.log("Success pend batch PUT", data);
-                // data['UnproccessedItems'].forEach(element => {
-                //     results.push(element['PutRequest']['fileName']);
-                // });
-                return resolve(data);
-            }
-        });
-    });
-}
+//     return new Promise((resolve, reject) => {
+//         // Call DynamoDB to add the item to the table
+//         ddb.batchWriteItem(params, function(err, data) {
+//             if (err) {
+//                 console.log("Error pend batch PUT", err);
+//                 return reject(err);
+//             } 
+//             else {
+//                 console.log("Success pend batch PUT", data);
+//                 // data['UnproccessedItems'].forEach(element => {
+//                 //     results.push(element['PutRequest']['fileName']);
+//                 // });
+//                 return resolve(data);
+//             }
+//         });
+//     });
+// }
 
-function generateFileNames(numOfFiles, recipe, extension) {
+function generateImagesNames(numOfFiles, recipe, extension) {
     let allowedExtenstions = ["jpg", "jpeg", "png"];
     if(!allowedExtenstions.includes(extension)) {
         throw "extention not supported";
@@ -140,13 +136,18 @@ function generateFileNames(numOfFiles, recipe, extension) {
         throw "too many files!";
     }
     else {
-        let i, name = process.env['FOLDER'] + "/" + recipe.name;
+        let i, name = process.env['IMAGES_FOLDER'] + "/" + recipe.name;
         let files = [];
         for(i = 0; i < numOfFiles; i++){
             files[i] = name + i.toString() + "---" + recipe.id + "." + extension;
         }
         return files;
     }
+}
+
+function generateContentName(recipe) {
+    let name = process.env['CONTENT_FOLDER'] + "/" + recipe.name, extension = "html";
+    return name + "---" + recipe.id + "." + extension;
 }
 
 function signUrls(fileNames) {
@@ -176,15 +177,18 @@ exports.handler = async function(event, context, callback) {
     try {
         let results = {};
         let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
-        let recipeItem = await putItemInRecipes(eventBody, username);
-        let fileNames = generateFileNames(eventBody['numOfFiles'], recipeItem, eventBody['extension']);
-        let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
-        let urls = signUrls(fileNames);
+        const newId = nanoid(12);
+        eventBody['id'] = newId;
+        let imagesNames = generateImagesNames(eventBody['numOfFiles'], eventBody, eventBody['extension']);
+        let htmlName = generateContentName(eventBody);
+        let recipeItem = await putRecipeInPendings(newId, eventBody, username);  
+        //let pend = await addHtmlToPendings(recipeItem, fileNames);
+        let urls = signUrls(imagesNames);
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
         results['Item'] = recipeItem;
-        results['fileNames'] = fileNames;
+        results['imagesNames'] = imagesNames;
         results['urls'] = urls;
         
         callback(null, setResponse(200, JSON.stringify(results)));        
