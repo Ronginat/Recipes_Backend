@@ -1,10 +1,9 @@
 const AWS = require('aws-sdk');
-const uuidv4 = require('uuid/v4');
 const nanoid = require('nanoid');
 //const Promise = require('promise');
 
 AWS.config.update({region: process.env['REGION']});
-const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+//const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
@@ -57,10 +56,10 @@ function putRecipeInPendings(recipe, username, fileNames, contentName) {
     const date = dateToString();
 
     const params = {
-        TableName: process.env['PEND_TABLE'],
+        TableName: process.env['PEND_RECIPE_TABLE'],
         Item: {
             'fileName': contentName,
-            'id' : id,
+            'id' : recipe.id,
             'name' : recipe.name,
             'description': recipe.description,
             'uploader': username,
@@ -159,7 +158,7 @@ function signUrls(fileNames) {
         Bucket: myBucket,
         Key: fileNames[i],
         Expires: signedUrlExpireSeconds
-    }
+    };
 
     let urls = [];
     for(i = 0; i < fileNames.length; i++) {

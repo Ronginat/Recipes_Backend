@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 
 AWS.config.update({region: process.env['REGION']});
-const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+//const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 

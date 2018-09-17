@@ -1,5 +1,4 @@
 const AWS = require('aws-sdk');
-const shortid = require('shortid');
 
 AWS.config.update({region: process.env['REGION']});
 const docClient = new AWS.DynamoDB.DocumentClient();
@@ -115,9 +114,9 @@ function generateFileNames(numOfFiles, recipe, extension) {
             length = recipe['foodFiles'].length;
         }
         let i, name = process.env['FOLDER'] + "/" + recipe.name;
-        let files = [], genId = shortid.generate();
+        let files = [];// , genId = nanoid(12);
         for(i = length; i < numOfFiles + length; i++){
-            files[i-length] = name + i.toString() + "--food--" + genId + "." + extension;
+            files[i-length] = name + i.toString() + "--food--" + recipe.id + "." + extension;
         }
         console.log("files\n" + files);
         return files;
@@ -134,7 +133,7 @@ function signUrls(fileNames) {
         Bucket: myBucket,
         Key: fileNames[i],
         Expires: signedUrlExpireSeconds
-    }
+    };
 
     let urls = [];
     for(i = 0; i < fileNames.length; i++) {
@@ -161,8 +160,8 @@ exports.handler = async function(event, context, callback) {
         //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         let recipeItem = await getItemFromRecipes(id);
         let fileNames = generateFileNames(eventBody['numOfFiles'], recipeItem, eventBody['extension']);
-        let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileName);
-        let urls = signUrls(fileName);
+        let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
+        let urls = signUrls(fileNames);
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
