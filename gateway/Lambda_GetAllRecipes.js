@@ -23,8 +23,8 @@ exports.handler = function(request, context, callback) {
     if(request['pathParameters'] != undefined && request['pathParameters']['bydate'] != undefined) {
         date = request['pathParameters']['bydate'];
     }
-    else if(request['queryStringParameters'] != undefined && request['queryStringParameters']['ByDate'] != undefined) {
-        date = request['queryStringParameters']['ByDate'];
+    else if(request['queryStringParameters'] != undefined && request['queryStringParameters']['lastModified'] != undefined) {
+        date = request['queryStringParameters']['lastModified'];
     }
     
     console.log('requested time: '+ date);

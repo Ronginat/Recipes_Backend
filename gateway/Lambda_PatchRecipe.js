@@ -79,7 +79,7 @@ function getUploader(key) {
                 }
                 else {
                     console.log("Success GET", data);
-                    return resolve(data['Item']['uploader']['S']);
+                    return resolve(data['Item']['uploader']);
                 }
             }
         });
@@ -137,7 +137,7 @@ function generateExpressionAttributes(attributes) {
                 break;
             case "categories":
                 Updates = Updates.concat("categories = :catValue, ");
-                Values[':catValue'] = documentClient.createSet(attributes[value]);
+                Values[':catValue'] = attributes[value];
                 break;
         }
     }
@@ -195,7 +195,7 @@ exports.handler = async function(event, context, callback) {
         }
 
         //authorized or doing free patch. either way, a valid request
-        let results = await updateItemInRecipes(id, request);
+        let results = await updateItemInRecipes(id, request['attributes']);
 
         callback(null, setResponse(200, JSON.stringify(results)));
     }

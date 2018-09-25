@@ -63,7 +63,7 @@ function putRecipeInPendings(recipe, username, fileNames, contentName) {
             'name' : recipe.name,
             'description': recipe.description,
             'uploader': username,
-            'categories': docClient.createSet(recipe.categories),
+            'categories': recipe.categories,
             'createdAt': date,
             'pendImages': fileNames
         }
@@ -179,8 +179,8 @@ exports.handler = async function(event, context, callback) {
         const newId = nanoid(12);
         eventBody['id'] = newId;
         let imagesNames = generateImagesNames(eventBody['numOfFiles'], eventBody, eventBody['extension']);
-        let htmlName = generateContentName(eventBody);
-        let recipeItem = await putRecipeInPendings(newId, eventBody, username);  
+        let htmlName = generateContentName(eventBody['recipe']);
+        let recipeItem = await putRecipeInPendings(newId, eventBody['recipe'], username);  
         //let pend = await addHtmlToPendings(recipeItem, fileNames);
         let urls = signUrls(imagesNames);
 
