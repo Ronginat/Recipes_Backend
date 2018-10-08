@@ -1,6 +1,4 @@
 const AWS = require('aws-sdk');
-//const moment = require('moment-timezone');
-//const Promise = require('promise');
 
 AWS.config.update({region: process.env['REGION']});
 //const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
@@ -9,7 +7,7 @@ const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
 const freePatch = ["likes", "comments"];
 const authPatch = ["description", "categories"];
-const forbidPatch = ["id", "name", "recipeFiles", "foodFile", "createdAt", "sharedKey", "uploader", "lastModifiedAt"];
+const forbidPatch = ["id", "name", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedAt"];
 
 
 function setResponse(status, body){
@@ -79,7 +77,7 @@ function getUploader(key) {
                 }
                 else {
                     console.log("Success GET", data);
-                    return resolve(data['Item']['uploader']);
+                    return resolve(data['Item']['uploader']['S']);
                 }
             }
         });
@@ -125,7 +123,10 @@ function generateExpressionAttributes(attributes) {
         switch(value) {
             case "likes":
                 Updates = Updates.concat("likes = likes + :likeValue, ");
-                Values[':likeValue'] = 1;
+                if (attributes[value] === 'like')
+                    Values[':likeValue'] = 1;
+                else
+                    Values[':likeValue'] = -1;
                 break;
             case "comments":
                 Updates = Updates.concat("comments = list_append(comments, :commValue), ");
@@ -137,7 +138,7 @@ function generateExpressionAttributes(attributes) {
                 break;
             case "categories":
                 Updates = Updates.concat("categories = :catValue, ");
-                Values[':catValue'] = attributes[value];
+                Values[':catValue'] = documentClient.createSet(attributes[value]);
                 break;
         }
     }
@@ -156,6 +157,9 @@ exports.handler = async function(event, context, callback) {
     let id = undefined, requiredAuth = false;
     let patchAttrs = [];
 
+    console.log(event['body']);
+
+
     try {
         if(event['queryStringParameters'] != undefined && event['queryStringParameters']['id'] != undefined) {
             id = event['queryStringParameters']['id'];
@@ -164,7 +168,8 @@ exports.handler = async function(event, context, callback) {
             throw "request must contain recipe id";
         }
     
-        let request = JSON.parse(event['body']);
+        const request = JSON.parse(event['body']);
+        //let request = JSON.parse(event['body']['attributes']);
     
         for(let key in request) {
             if(forbidPatch.includes(key)) {
@@ -195,7 +200,7 @@ exports.handler = async function(event, context, callback) {
         }
 
         //authorized or doing free patch. either way, a valid request
-        let results = await updateItemInRecipes(id, request['attributes']);
+        let results = await updateItemInRecipes(id, request);
 
         callback(null, setResponse(200, JSON.stringify(results)));
     }
