@@ -75,6 +75,19 @@ function scanTable(){
   });
 }
 
+function deleteLastModifiedItem(scan) {
+  let results = [];
+  for(let i=0; i < scan.length; i++) {
+    if(scan[i]['name'] !== 'last-modified')
+      results.push(scan[i]);
+  }
+  return results;
+  // scan.forEach(element => {
+  //   if(element['name'] === 'last-modified')
+  //     delete scan.element;
+  // });
+}
+
 // handleHttpRequest is the entry point for Lambda requests
 exports.handler = async function(event, context, callback) {
     console.log('received event\n' + JSON.stringify(event));
@@ -100,7 +113,8 @@ exports.handler = async function(event, context, callback) {
       }
 
       const scanResults = await scanTable();
-      callback(null, setResponse(200, JSON.stringify(scanResults)));
+      const results = deleteLastModifiedItem(scanResults);
+      callback(null, setResponse(200, JSON.stringify(results)));
     }
     catch(err) {
       callback(err); 

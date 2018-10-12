@@ -138,7 +138,7 @@ function generateExpressionAttributes(attributes) {
                 break;
             case "categories":
                 Updates = Updates.concat("categories = :catValue, ");
-                Values[':catValue'] = documentClient.createSet(attributes[value]);
+                Values[':catValue'] = attributes[value];
                 break;
         }
     }
