@@ -135,8 +135,9 @@ function generateImagesNames(numOfFiles, recipe, extension) {
         throw "too many files!";
     }
     else {
-        let i, name = process.env['IMAGES_FOLDER'] + "/" + recipe.name;
-        let files = [];
+        //let i, name = process.env['IMAGES_FOLDER'] + "/" + recipe.name;
+        const name = recipe.name;
+        let i, files = [];
         for(i = 0; i < numOfFiles; i++){
             files[i] = name + i.toString() + "---" + recipe.id + "." + extension;
         }
@@ -145,7 +146,8 @@ function generateImagesNames(numOfFiles, recipe, extension) {
 }
 
 function generateContentName(recipe) {
-    let name = process.env['CONTENT_FOLDER'] + "/" + recipe.name, extension = "html";
+    //let name = process.env['CONTENT_FOLDER'] + "/" + recipe.name, extension = "html";
+    let name = recipe.name, extension = "html";
     return name + "---" + recipe.id + "." + extension;
 }
 
