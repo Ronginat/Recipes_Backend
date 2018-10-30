@@ -52,20 +52,19 @@ function getUsername(token){
     });
 }
 
-function putRecipeInPendings(recipe, username, fileNames, contentName) {
+function putRecipeInPendings(recipe, contentFile) {
     const date = dateToString();
 
     const params = {
         TableName: process.env['PEND_RECIPE_TABLE'],
         Item: {
-            'fileName': contentName,
             'id' : recipe.id,
+            'recipeFile': contentFile,
             'name' : recipe.name,
             'description': recipe.description,
-            'uploader': username,
+            'uploader': recipe.uploader,
             'categories': recipe.categories,
-            'createdAt': date,
-            'pendImages': fileNames
+            'createdAt': date
         }
     };
 
@@ -126,24 +125,24 @@ function putRecipeInPendings(recipe, username, fileNames, contentName) {
 //     });
 // }
 
-function generateImagesNames(numOfFiles, recipe, extension) {
-    let allowedExtenstions = ["jpg", "jpeg", "png"];
-    if(!allowedExtenstions.includes(extension)) {
-        throw "extention not supported";
-    }
-    else if(numOfFiles > process.env['MAX_FILES_PER_UPLOAD']) {
-        throw "too many files!";
-    }
-    else {
-        //let i, name = process.env['IMAGES_FOLDER'] + "/" + recipe.name;
-        const name = recipe.name;
-        let i, files = [];
-        for(i = 0; i < numOfFiles; i++){
-            files[i] = name + i.toString() + "---" + recipe.id + "." + extension;
-        }
-        return files;
-    }
-}
+// function generateImagesNames(numOfFiles, recipe, extension) {
+//     let allowedExtenstions = ["jpg", "jpeg", "png"];
+//     if(!allowedExtenstions.includes(extension)) {
+//         throw "extention not supported";
+//     }
+//     else if(numOfFiles > process.env['MAX_FILES_PER_UPLOAD']) {
+//         throw "too many files!";
+//     }
+//     else {
+//         //let i, name = process.env['IMAGES_FOLDER'] + "/" + recipe.name;
+//         const name = recipe.name;
+//         let i, files = [];
+//         for(i = 0; i < numOfFiles; i++){
+//             files[i] = name + i.toString() + "---" + recipe.id + "." + extension;
+//         }
+//         return files;
+//     }
+// }
 
 function generateContentName(recipe) {
     //let name = process.env['CONTENT_FOLDER'] + "/" + recipe.name, extension = "html";
@@ -151,25 +150,38 @@ function generateContentName(recipe) {
     return name + "---" + recipe.id + "." + extension;
 }
 
-function signUrls(fileNames) {
+function signUrl(fileName) {
     const myBucket = process.env['BUCKET'];
     const signedUrlExpireSeconds = 60 * 5; //5 minutes
-    let i = 0;
 
     let params = {
         Bucket: myBucket,
-        Key: fileNames[i],
         Expires: signedUrlExpireSeconds
     };
 
-    let urls = [];
-    for(i = 0; i < fileNames.length; i++) {
-        params['Key'] = fileNames[i];
-        urls[i] = s3.getSignedUrl('putObject', params);
-    }
-
-    return urls;
+    params['Key'] =  process.env['CONTENT_FOLDER'] + "/" + fileName;
+    return s3.getSignedUrl('putObject', params);
 }
+
+// function signUrls(fileNames) {
+//     const myBucket = process.env['BUCKET'];
+//     const signedUrlExpireSeconds = 60 * 5; //5 minutes
+//     let i = 0;
+
+//     let params = {
+//         Bucket: myBucket,
+//         Key: fileNames[i],
+//         Expires: signedUrlExpireSeconds
+//     };
+
+//     let urls = [];
+//     for(i = 0; i < fileNames.length; i++) {
+//         params['Key'] = fileNames[i];
+//         urls[i] = s3.getSignedUrl('putObject', params);
+//     }
+
+//     return urls;
+// }
 
 exports.handler = async function(event, context, callback) {
     let eventBody = JSON.parse(event['body']);
@@ -177,20 +189,22 @@ exports.handler = async function(event, context, callback) {
 
     try {
         let results = {};
-        let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
+        eventBody['recipe']['uploader'] = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         const newId = nanoid(12);
-        eventBody['id'] = newId;
-        let imagesNames = generateImagesNames(eventBody['numOfFiles'], eventBody, eventBody['extension']);
+        eventBody['recipe']['id'] = newId;
+        //let imagesNames = generateImagesNames(eventBody['numOfFiles'], eventBody, eventBody['extension']);
         let htmlName = generateContentName(eventBody['recipe']);
-        let recipeItem = await putRecipeInPendings(newId, eventBody['recipe'], username);  
+        let recipeItem = await putRecipeInPendings(eventBody['recipe'], htmlName);  
         //let pend = await addHtmlToPendings(recipeItem, fileNames);
-        let urls = signUrls(imagesNames);
+        //let urls = {};
+        //urls['images'] = signUrls(imagesNames);
+        const url = signUrl(htmlName);
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
         results['Item'] = recipeItem;
-        results['imagesNames'] = imagesNames;
-        results['urls'] = urls;
+        //results['imagesNames'] = imagesNames;
+        results['url'] = url;
         
         callback(null, setResponse(200, JSON.stringify(results)));        
     } catch(err) {

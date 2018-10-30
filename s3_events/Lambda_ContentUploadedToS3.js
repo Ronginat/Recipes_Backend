@@ -37,10 +37,10 @@ function putItemInRecipes(pendItem) {
             'sharedKey': process.env['SHARED_KEY'],
             'name' : pendItem.name,
             'description': pendItem.description,
-            'uploader': pendItem.username,
+            'uploader': pendItem.uploader,
             'categories': pendItem.categories,
-            'fileName': pendItem.fileName,
-            'createdAt': date,
+            'recipeFile': pendItem.recipeFile,
+            'createdAt': pendItem.createdAt,
             'lastModifiedAt': date,
             'likes': 0,
         }
@@ -63,7 +63,7 @@ function putItemInRecipes(pendItem) {
 
 function removeFromPending(key) {
     let params = {
-        "TableName": process.env['RECIPE_PEND_TABLE'],
+        "TableName": process.env['PEND_RECIPE_TABLE'],
         "Key": {
             "id": key
         },
@@ -111,35 +111,35 @@ function deleteFromS3(bucket, key) {
     });
 }
 
-function deletePendingImagesFromS3(images) {
-    let array = [];
-    let params = {
-        Bucket: process.env['BUCKET'],
-        Delete: {
-            Quiet: false,
-        },
-    };
-    images.forEach(function(element, index, arr) {
-        array.push({
-            Key: element
-        });
-    });
-    params.Delete['Objects'] = array;
+// function deletePendingImagesFromS3(images) {
+//     let array = [];
+//     let params = {
+//         Bucket: process.env['BUCKET'],
+//         Delete: {
+//             Quiet: false,
+//         },
+//     };
+//     images.forEach(function(element, index, arr) {
+//         array.push({
+//             Key: element
+//         });
+//     });
+//     params.Delete['Objects'] = array;
 
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        s3.deleteObjects(params, function(err, data) {
-            if (err) {
-                console.log(err, err.stack); // an error occurred
-                reject(err);
-            }
-            else {
-                console.log(data); // successful response
-                resolve(data);
-            }
-        });
-    });
-}
+//     return new Promise((resolve, reject) => {
+//         // Call DynamoDB to add the item to the table
+//         s3.deleteObjects(params, function(err, data) {
+//             if (err) {
+//                 console.log(err, err.stack); // an error occurred
+//                 reject(err);
+//             }
+//             else {
+//                 console.log(data); // successful response
+//                 resolve(data);
+//             }
+//         });
+//     });
+// }
 
 exports.handler = async function(event, context) {
     let record = event['Records'][0]['s3'];
@@ -149,10 +149,10 @@ exports.handler = async function(event, context) {
     const id = getIdFromFileName(uploadedName);
     try {
         let removedPend = await removeFromPending(id);
-        let updatedRecipeItem = await putItemInRecipes(removedPend);
-        let removedImages = await deletePendingImagesFromS3(removedPend['pendImages']);
+        let postedRecipeItem = await putItemInRecipes(removedPend);
+        //let removedImages = await deletePendingImagesFromS3(removedPend['pendImages']);
         
-        console.log("recipe upload successfully.\n" + JSON.stringify(updatedRecipeItem));
+        console.log("recipe upload successfully.\n" + JSON.stringify(postedRecipeItem));
 
     } catch(err) {
         console.log("error when uploading recipe.\n" + err);
