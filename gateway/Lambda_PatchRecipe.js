@@ -191,7 +191,7 @@ exports.handler = async function(event, context, callback) {
 
         if(requiredAuth) {
             //authorization check. only the uploader can change some attributes
-            let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
+            let username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
             let uploader = await getUploader(id);
 
             if(username !== uploader) {

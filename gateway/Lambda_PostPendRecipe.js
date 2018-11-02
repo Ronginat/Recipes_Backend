@@ -37,7 +37,7 @@ function dateToString() {
 function getUsername(token){
     let params = {
         AccessToken: token
-      };
+    };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
@@ -77,7 +77,7 @@ function putRecipeInPendings(recipe, contentFile) {
             } 
             else {
                 console.log("Success recipe PUT", data);
-                return resolve(data.Item);
+                return resolve(data);
             }
         });
     });
@@ -146,7 +146,7 @@ function putRecipeInPendings(recipe, contentFile) {
 
 function generateContentName(recipe) {
     //let name = process.env['CONTENT_FOLDER'] + "/" + recipe.name, extension = "html";
-    let name = recipe.name, extension = "html";
+    let name = 'recipe', extension = "html";
     return name + "---" + recipe.id + "." + extension;
 }
 
@@ -184,21 +184,32 @@ function signUrl(fileName) {
 // }
 
 exports.handler = async function(event, context, callback) {
+    console.log(event);
+
+    // let results = {};
+    // results['url'] = "url response from server"
+    // callback(null, setResponse(200, JSON.stringify(results)));
     let eventBody = JSON.parse(event['body']);
     //let categories = JSON.parse(body.categories);
 
     try {
         let results = {};
-        eventBody['recipe']['uploader'] = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
+                           //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
+        eventBody['recipe']['uploader'] = await getUsername(event['headers']['Authorization']);
+        console.log('username: ' + eventBody['recipe']['uploader']);
         const newId = nanoid(12);
+        console.log('generated id = ' + newId);
         eventBody['recipe']['id'] = newId;
         //let imagesNames = generateImagesNames(eventBody['numOfFiles'], eventBody, eventBody['extension']);
         let htmlName = generateContentName(eventBody['recipe']);
+        console.log('generated html file name: ' + htmlName);
         let recipeItem = await putRecipeInPendings(eventBody['recipe'], htmlName);  
+        console.log('recipe item in db: \n' + JSON.stringify(recipeItem));
         //let pend = await addHtmlToPendings(recipeItem, fileNames);
         //let urls = {};
         //urls['images'] = signUrls(imagesNames);
         const url = signUrl(htmlName);
+        console.log('signed url: ' + url);
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
@@ -208,6 +219,7 @@ exports.handler = async function(event, context, callback) {
         
         callback(null, setResponse(200, JSON.stringify(results)));        
     } catch(err) {
+        console.log('got error, ' + err)
         callback(null, setResponse(400, err));
     }
 };

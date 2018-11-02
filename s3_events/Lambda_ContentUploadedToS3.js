@@ -63,11 +63,11 @@ function putItemInRecipes(pendItem) {
 
 function removeFromPending(key) {
     let params = {
-        "TableName": process.env['PEND_RECIPE_TABLE'],
-        "Key": {
-            "id": key
+        TableName: process.env['PEND_RECIPE_TABLE'],
+        Key: {
+            'id': key
         },
-        "ReturnValues": "ALL_OLD"
+        ReturnValues: 'ALL_OLD'
     };
 
     return new Promise((resolve, reject) => {

@@ -31,18 +31,22 @@ function dateToString() {
             + ':' + (seconds <= 9 ? '0' + seconds : seconds);
 }
 
-function getItemFromRecipes(id) {
+function getItemFromRecipes(itemId) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            "id": id,
-            "sharedKey": process.env['SHARED_KEY']
-        },
-        "ProjectionExpression": "id, #recipeName, foodFiles",
-        "ExpressionAttributeNames": {
-            "#recipeName": "name"
+            id: itemId,
+            sharedKey: process.env['SHARED_KEY']
         }
+        
     };
+    //"sharedKey": process.env['SHARED_KEY']
+    // ProjectionExpression: "id, #recipeName, foodFiles",
+    //     ExpressionAttributeNames: {
+    //         '#recipeName': 'name'
+    //     }
+    //delete params['ProjectionExpression'];
+    //delete params['ExpressionAttributeNames'];
 
     return new Promise((resolve, reject) => {
         // Call DynamoDB to read the item from the table
@@ -113,10 +117,10 @@ function generateFileNames(numOfFiles, recipe, extension) {
         if(recipe['foodFiles'] != undefined) {
             length = recipe['foodFiles'].length;
         }
-        let i, name = process.env['FOLDER'] + "/" + recipe.name;
-        let files = [];// , genId = nanoid(12);
+        let i, prefix = process.env['FOLDER'] + "/" + recipe.id;
+        let files = [];
         for(i = length; i < numOfFiles + length; i++){
-            files[i-length] = name + i.toString() + "--food--" + recipe.id + "." + extension;
+            files[i - length] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + i.toString() + "." + extension;
         }
         console.log("files\n" + files);
         return files;
@@ -125,13 +129,14 @@ function generateFileNames(numOfFiles, recipe, extension) {
 
 function signUrls(fileNames) {
     console.log('start sign urls');
+    console.log(fileNames);
     const myBucket = process.env['BUCKET'];
     const signedUrlExpireSeconds = 60 * 5; //5 minutes
     let i = 0;
 
     let params = {
         Bucket: myBucket,
-        Key: fileNames[i],
+        'Key': fileNames[i],
         Expires: signedUrlExpireSeconds
     };
 
@@ -147,7 +152,6 @@ function signUrls(fileNames) {
 exports.handler = async function(event, context, callback) {
     console.log(event);
     let eventBody = JSON.parse(event['body']);
-    //let categories = JSON.parse(body.categories);
 
     try {
         let results = {}, id;
@@ -157,21 +161,27 @@ exports.handler = async function(event, context, callback) {
         else {
             throw "request must contain recipe id";
         }
+
+        const numOfFiles = parseInt(eventBody['numOfFiles']);
+        console.log('id = ' + id);
         //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         let recipeItem = await getItemFromRecipes(id);
-        let fileNames = generateFileNames(eventBody['numOfFiles'], recipeItem, eventBody['extension']);
-        let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
+        console.log('generating names');
+        let fileNames = generateFileNames(numOfFiles, recipeItem, eventBody['extension']);
+        //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
+        console.log('signing urls');
         let urls = signUrls(fileNames);
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
         //results['Item'] = recipeItem;
-        results['fileNames'] = fileNames;
-        results['urls'] = urls;
+        //results['fileNames'] = fileNames;
+        //results['urls'] = urls;
         
-        callback(null, setResponse(200, JSON.stringify(results)));
+        callback(null, setResponse(200, JSON.stringify(urls)));
 
     } catch(err) {
+        console.log(err);
         callback(null, setResponse(400, err));
     }
 };

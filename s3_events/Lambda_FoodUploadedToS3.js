@@ -51,22 +51,24 @@ function updateItemInRecipes(pendItem) {
         },
         UpdateExpression : "SET #attrList = list_append(#attrList, :listValue), #attrDate = :dateValue",
         ExpressionAttributeNames : {
-            "#attrList" : "recipeFiles",
+            "#attrList" : "foodFiles",
             "#attrDate": "lastModifiedAt"
         },
         ExpressionAttributeValues : {
             ":listValue": {"L": [ { "S": pendItem.fileName }]},
             ":dateValue": {"S": date}
         },
-        ReturnValues: "UPDATED_NEW "
+        ConditionExpression: "attribute_exists(#attrList)",
+        ReturnValues: "UPDATED_NEW"
     };
 
     return new Promise((resolve, reject) => {
         // Call DynamoDB to add the item to the table
         ddb.updateItem(params, function(err, data) {
             if (err) {
-                console.log("Error recipe UPDATE", err);
-                return reject(err);
+                console.log("Error recipe First UPDATE", err);
+                createComments(resolve, reject);
+                //return reject(err);
             } 
             else {
                 if(data['Attributes'] == null) {
@@ -79,6 +81,25 @@ function updateItemInRecipes(pendItem) {
             }
         });
     });
+
+    function createComments(resolve, reject) {
+        delete params['ConditionExpression'];
+        params['UpdateExpression'] = "SET #attrList = :listValue, #attrDate = :dateValue";
+        ddb.updateItem(params, function(err, data) {
+            if(err) {
+                console.log("Error recipe *Second* UPDATE", err);
+                return reject(err);
+            } else {
+                if(data['Attributes'] == null) {
+                    reject("error linking the file with recipe in db second try");
+                }
+                else {
+                    console.log("Success recipe Second UPDATE", data);
+                    return resolve(data['Attributes']);
+                }
+            }
+        });
+    }
 }
 
 function removeFromPending(key) {
@@ -132,14 +153,29 @@ function deleteFromS3(bucket, key) {
     
 }
 
+function decodeID(name) {
+    const dirName = process.env['FOLDER'];
+    const dirLength = dirName.length;
+    return name.substring(dirLength + 1, dirLength + 1 + 12);
+}
+
+function decodeFileName(name) {
+    const dirName = process.env['FOLDER'];
+    const dirLength = dirName.length;
+    return name.substring(dirLength + 1);
+}
+
 exports.handler = async function(event, context) {
     let record = event['Records'][0]['s3'];
     let uploadedName = record['object']['key'];
     let bucket = record['bucket']['name'];
 
+    console.log(record);
     try {
-        let removedPend = await removeFromPending(uploadedName);
-        let updatedRecipeItem = await updateItemInRecipes(removedPend);
+        //let removedPend = await removeFromPending(uploadedName);
+        const id = decodeID(uploadedName);
+        const fileName = decodeFileName(uploadedName);
+        let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
         
         console.log("recipe upload successfully.\n" + JSON.stringify(updatedRecipeItem));
 
