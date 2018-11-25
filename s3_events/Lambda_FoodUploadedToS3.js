@@ -1,5 +1,5 @@
 const AWS = require('aws-sdk');
-
+const lambda = new AWS.Lambda();
 AWS.config.update({region: process.env['REGION']});
 const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();
@@ -25,111 +25,68 @@ const s3 = new AWS.S3();
 //     });
 // }
 
-function dateToString() {
-    const date = new Date();
-    var day = date.getUTCDate();
-    var month = date.getUTCMonth() + 1;
-    var year = date.getUTCFullYear();
 
-    const hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    const seconds = date.getUTCSeconds();
-
-    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
-            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds);
-}
-
-function updateItemInRecipes(pendItem) {
-    const date = dateToString();
-
+function getRecipe(key) {
     let params = {
-        TableName: process.env['RECIPE_TABLE'],
-        Key: {
-            "id" : {"S": pendItem.id},
-            "sharedKey": {"S": process.env['SHARED_KEY']},
-        },
-        UpdateExpression : "SET #attrList = list_append(#attrList, :listValue), #attrDate = :dateValue",
-        ExpressionAttributeNames : {
-            "#attrList" : "foodFiles",
-            "#attrDate": "lastModifiedAt"
-        },
-        ExpressionAttributeValues : {
-            ":listValue": {"L": [ { "S": pendItem.fileName }]},
-            ":dateValue": {"S": date}
-        },
-        ConditionExpression: "attribute_exists(#attrList)",
-        ReturnValues: "UPDATED_NEW"
-    };
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        ddb.updateItem(params, function(err, data) {
-            if (err) {
-                console.log("Error recipe First UPDATE", err);
-                createComments(resolve, reject);
-                //return reject(err);
-            } 
-            else {
-                if(data['Attributes'] == null) {
-                    reject("error linking the file with recipe in db");
-                }
-                else {
-                    console.log("Success recipe UPDATE", data);
-                    return resolve(data['Attributes']);
-                }
-            }
-        });
-    });
-
-    function createComments(resolve, reject) {
-        delete params['ConditionExpression'];
-        params['UpdateExpression'] = "SET #attrList = :listValue, #attrDate = :dateValue";
-        ddb.updateItem(params, function(err, data) {
-            if(err) {
-                console.log("Error recipe *Second* UPDATE", err);
-                return reject(err);
-            } else {
-                if(data['Attributes'] == null) {
-                    reject("error linking the file with recipe in db second try");
-                }
-                else {
-                    console.log("Success recipe Second UPDATE", data);
-                    return resolve(data['Attributes']);
-                }
-            }
-        });
-    }
-}
-
-function removeFromPending(key) {
-    let params = {
-        "TableName": process.env['PEND_IMG_TABLE'],
+        "TableName": process.env['RECIPE_TABLE'],
         "Key": {
-            "fileName": key
+            "id": key,
+            "sharedKey": process.env['SHARED_KEY']
         },
-        "ReturnValues": "ALL_OLD"
     };
+    
+    /*"ProjectionExpression": "id, #recipeName, comments",
+        "ExpressionAttributeNames": {
+            "#recipeName": "name"
+        }*/
 
     return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        docClient.delete(params, function(err, data) {
+        docClient.get(params, (err, data) => {
             if (err) {
-                console.log("Error pend DELETE", err);
+                console.log("Error GET", err);
                 return reject(err);
             } 
             else {
-                if(data['Attributes'] == null) {
-                    reject("uploaded file not found in pending table");
+                if(data['Item'] == undefined) {
+                    reject("item not found in recipes table");
                 }
                 else {
-                    console.log("Success pend DELETE", data);
-                    return resolve(data['Attributes']);
+                    console.log("Success GET", data);
+                    return resolve(data['Item']);
                 }
             }
         });
     });
 }
+
+// function removeFromPending(key) {
+//     let params = {
+//         "TableName": process.env['PEND_IMG_TABLE'],
+//         "Key": {
+//             "fileName": key
+//         },
+//         "ReturnValues": "ALL_OLD"
+//     };
+
+//     return new Promise((resolve, reject) => {
+//         // Call DynamoDB to add the item to the table
+//         docClient.delete(params, function(err, data) {
+//             if (err) {
+//                 console.log("Error pend DELETE", err);
+//                 return reject(err);
+//             } 
+//             else {
+//                 if(data['Attributes'] == null) {
+//                     reject("uploaded file not found in pending table");
+//                 }
+//                 else {
+//                     console.log("Success pend DELETE", data);
+//                     return resolve(data['Attributes']);
+//                 }
+//             }
+//         });
+//     });
+// }
 
 function deleteFromS3(bucket, key) {
     let params = {
@@ -151,6 +108,52 @@ function deleteFromS3(bucket, key) {
         });
     });
     
+}
+
+function invokeFoodProcessedUpdateRecipe(payload) {
+    const params = {
+        FunctionName: 'FoodProcessedUpdateRecipe',
+        InvocationType: 'Event',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+    };
+
+    lambda.invoke(params, (err,data) => {
+        if (err) console.log(err, err.stack);
+        else console.log(data);
+    });
+    
+}
+
+function invokeThumbnailGenerator(payload) {
+    const params = {
+        FunctionName: 'ThumbnailGenerator',
+        InvocationType: 'RequestResponse',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+    };
+
+    return new Promise((resolve, reject) => {
+        lambda.invoke(params, (err,data) => {
+            if (err) {
+                console.log(err, err.stack);
+                reject(err);
+            }
+            else if ('FunctionError' in data) {
+                console.log(data);
+                reject(JSON.parse(data.Payload).errorMessage);
+            }
+            else {
+                console.log(data);
+                resolve(data);
+            }
+        });
+    });
+
+    // lambda.invoke(params, (err,data) => {
+    //     if (err) console.log(err, err.stack);
+    //     else console.log(data);
+    // });
 }
 
 function decodeID(name) {
@@ -175,9 +178,25 @@ exports.handler = async function(event, context) {
         //let removedPend = await removeFromPending(uploadedName);
         const id = decodeID(uploadedName);
         const fileName = decodeFileName(uploadedName);
-        let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
+        const recipe = await getRecipe(id);
+        if (!recipe.hasOwnProperty('foodFiles')) { // if (!('foodFiles' in recipe))
+            const payload = {
+                'filePath': uploadedName,
+                'fileName': fileName,
+                'targetDir': 'thumbnails'
+            };
+            await invokeThumbnailGenerator(payload);
+        }
+        //let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
+
+        const payload = {
+            'id': id,
+            'fileName': fileName,
+        };
+        invokeFoodProcessedUpdateRecipe(payload);
         
-        console.log("recipe upload successfully.\n" + JSON.stringify(updatedRecipeItem));
+        console.log("exit food uploaded lambda");
+        //console.log("recipe upload successfully.\n" + JSON.stringify(updatedRecipeItem));
 
     } catch(err) {
         console.log("error when uploading recipe.\n" + err);
