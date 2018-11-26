@@ -110,11 +110,11 @@ function deleteFromS3(bucket, key) {
 exports.handler = async (event, context) => {
     try {
         console.log(event);
-        // const id = event.id;
-        // const fileName = event.fileName;
-        // let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
+        const id = event.id;
+        const fileName = event.fileName;
+        let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
         
-        //console.log("recipe updated successfully.\n" + JSON.stringify(updatedRecipeItem));
+        console.log("recipe updated successfully.\n" + JSON.stringify(updatedRecipeItem));
         context.done();
     } catch(err) {
         console.log("error when updating recipe.\n" + err);
