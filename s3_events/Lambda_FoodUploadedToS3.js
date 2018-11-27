@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 const lambda = new AWS.Lambda();
 AWS.config.update({region: process.env['REGION']});
-const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 // const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
@@ -28,10 +28,10 @@ const s3 = new AWS.S3();
 
 function getRecipe(key) {
     let params = {
-        "TableName": process.env['RECIPE_TABLE'],
-        "Key": {
-            "id": key,
-            "sharedKey": process.env['SHARED_KEY']
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            id: key,
+            sharedKey: process.env['SHARED_KEY']
         },
     };
     
@@ -118,9 +118,17 @@ function invokeFoodProcessedUpdateRecipe(payload) {
         Payload: JSON.stringify(payload)
     };
 
-    lambda.invoke(params, (err,data) => {
-        if (err) console.log(err, err.stack);
-        else console.log(data);
+    return new Promise((resolve, reject) => {
+        lambda.invoke(params, (err,data) => {
+            if (err) { 
+                console.log(err, err.stack);
+                reject(err);
+            }
+            else {
+                console.log(data);
+                return resolve(data);
+            }
+        });
     });
     
 }
@@ -168,6 +176,7 @@ function decodeFileName(name) {
     return name.substring(dirLength + 1);
 }
 
+
 exports.handler = async function(event, context) {
     let record = event['Records'][0]['s3'];
     let uploadedName = record['object']['key'];
@@ -186,16 +195,18 @@ exports.handler = async function(event, context) {
                 'targetDir': 'thumbnails'
             };
             await invokeThumbnailGenerator(payload);
+            console.log("finish thumbnail lambda");
         }
-        //let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
 
         const payload = {
             'id': id,
             'fileName': fileName,
         };
-        invokeFoodProcessedUpdateRecipe(payload);
-        
+        await invokeFoodProcessedUpdateRecipe(payload);        
         console.log("exit food uploaded lambda");
+
+        //let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
+
         //console.log("recipe upload successfully.\n" + JSON.stringify(updatedRecipeItem));
 
     } catch(err) {

@@ -2,8 +2,6 @@ const AWS = require('aws-sdk');
 
 AWS.config.update({region: process.env['REGION']});
 const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
-const docClient = new AWS.DynamoDB.DocumentClient();
-const s3 = new AWS.S3();
 
 
 function dateToString() {
@@ -81,29 +79,6 @@ function updateItemInRecipes(pendItem) {
             }
         });
     }
-}
-
-
-function deleteFromS3(bucket, key) {
-    let params = {
-        Bucket: bucket, 
-        Key: key
-    };
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        s3.deleteObject(params, function(err, data) {
-            if (err) {
-                console.log(err, err.stack); // an error occurred
-                reject(err);
-            }
-            else {
-                console.log(data); // successful response
-                resolve(data);
-            }
-        });
-    });
-    
 }
 
 

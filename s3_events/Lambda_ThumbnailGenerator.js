@@ -37,16 +37,25 @@ async function createThumbnail(s3_response) {
     return new Promise((resolve, reject) => {
         image.size((err, size) => {
             if (err) reject(err);
-            else {          
-                const scalingFactor = Math.min(1, THUMB_WIDTH / size.width, THUMB_HEIGHT / size.height);
-                const width = scalingFactor * size.width;
-                const height = scalingFactor * size.height;
-
-                image.resize(width, height)
-                    .toBuffer("jpg", (err, buffer) => {
+            else {
+                // if the size is small enough, don't resize the image
+                if (Number(s3_response.ContentLength) <= Number(process.env['LARGEST_ALLOWED_SIZE'])) {
+                    image.toBuffer("jpg", (err, buffer) => {
                         if (err) reject(err);
                         else resolve(buffer);
                     });
+                }
+                else {
+                    const scalingFactor = Math.min(1, THUMB_WIDTH / size.width, THUMB_HEIGHT / size.height);
+                    const width = scalingFactor * size.width;
+                    const height = scalingFactor * size.height;
+
+                    image.resize(width, height)
+                        .toBuffer("jpg", (err, buffer) => {
+                            if (err) reject(err);
+                            else resolve(buffer);
+                        });
+                }
             }
         });
     });
@@ -59,7 +68,7 @@ async function uploadThumbnail(fileName, data) {
             Bucket: process.env['BUCKET'],
             Key: dstKey,
             Body: data,
-            ContentType: "image/jpg",
+            ContentType: "image/jpeg",
             Metadata: {
               thumbnail: 'TRUE'
             }
@@ -82,7 +91,8 @@ exports.handler = async (event, context) => {
         const uploadReq = await createThumbnail(s3_response);
         //console.log("upload request: \n" + uploadReq);
 
-        const uploadRes = await uploadThumbnail(event.fileName, uploadReq);
+        await uploadThumbnail(event.fileName, uploadReq);
+        //const uploadRes = await uploadThumbnail(event.fileName, uploadReq);
         //console.log("upload response: \n" + uploadRes);
 
         context.done();
