@@ -117,10 +117,12 @@ function generateFileNames(numOfFiles, recipe, extension) {
         if(recipe['foodFiles'] != undefined) {
             length = recipe['foodFiles'].length;
         }
-        let i, prefix = process.env['FOLDER'] + "/" + recipe.id;
+        let i;//, prefix = process.env['FOLDER'] + "/" + recipe.id;
         let files = [];
         for(i = length; i < numOfFiles + length; i++){
-            files[i - length] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + i.toString() + "." + extension;
+            const rand = Math.floor((1 + Math.random()) * 0x100) // add 3 random characters for the case of 2 users requesting urls in the same time
+            .toString(16);
+            files[i - length] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + rand + "." + extension;
         }
         console.log("files\n" + files);
         return files;
