@@ -125,12 +125,14 @@ function generateExpressionAttributes(attributes) {
                 Updates = Updates.concat("likes = likes + :likeValue, ");
                 if (attributes[value] === 'like')
                     Values[':likeValue'] = 1;
-                else
+                if (attributes[value] === 'unlike')
                     Values[':likeValue'] = -1;
                 break;
             case "comments":
-                Updates = Updates.concat("comments = list_append(comments, :commValue), ");
-                Values[':commValue'] = [attributes[value]];
+                Updates = Updates.concat("SET comments = list_append(comments, :commValue), ");
+                let comment = attributes[value];
+                comment['date'] = date;
+                Values[':commValue'] = [comment];
                 break;
             case "description":
                 Updates = Updates.concat("description = :descValue, ");
@@ -158,7 +160,6 @@ exports.handler = async function(event, context, callback) {
     let patchAttrs = [];
 
     console.log(event['body']);
-
 
     try {
         if(event['queryStringParameters'] != undefined && event['queryStringParameters']['id'] != undefined) {
