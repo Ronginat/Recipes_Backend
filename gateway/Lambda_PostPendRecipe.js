@@ -64,7 +64,7 @@ function putRecipeInPendings(recipe, contentFile) {
             'description': recipe.description,
             'uploader': recipe.uploader,
             'categories': recipe.categories,
-            'createdAt': date
+            'creationDate': date
         }
     };
 

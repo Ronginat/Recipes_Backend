@@ -9,76 +9,107 @@ let params = {
     TableName: process.env['TABLE'],
     IndexName: process.env['INDEX'],
     KeyConditionExpression: "sharedKey = :v_key AND lastModifiedAt >= :v_time",
+    ProjectionExpression: "#id, #name, #desc, #create, #modified, #uploader, #file, #images, #categories, #likes",
+    ExpressionAttributeNames: {
+      "#id":  "id",
+      "#name": "name",
+      "#desc": "description",
+      "#create": "creationDate",
+      "#modified": "lastModifiedAt",
+      "#uploader": "uploader",
+      "#file": "recipeFile",
+      "#images": "foodFiles",
+      "#categories": "categories",
+      "#likes": "likes"
+    },
     ScanIndexForward: false,
     ReturnConsumedCapacity: "TOTAL"
 };
 
 function onQuery(LastEvaluatedKey) {
     if (LastEvaluatedKey != undefined) {
-        params.ExclusiveStartKey = LastEvaluatedKey;
+        params['ExclusiveStartKey'] = LastEvaluatedKey;
     }
     return new Promise((resolve, reject) => {
         docClient.query(params, (err, data) => {
             if (err) {
                 console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
-                reject(err);
+                return reject(err);
             } else {
                 // print all the data
                 console.log("Scan succeeded. ", JSON.stringify(data));
-                resolve(data);
+                return resolve(data);
             }
         });
     });
 }
 
-async function getAll(date) {
+async function getAll(date, ExclusiveStartKey, userLimit) {
     const ExpressionAttributeValues = {
         ":v_key": process.env['SHARED_KEY'],
         ":v_time": date
     };
     params['ExpressionAttributeValues'] = ExpressionAttributeValues;
+    const absoluteLimit  = Math.min(process.env['LIMIT'], userLimit);
+    params['Limit'] = absoluteLimit;
     
     let listData = [];
-    let LastEvaluatedKey = undefined;
-
+    let LastEvaluatedKey = ExclusiveStartKey;
+    
     do {
         const data = await onQuery(LastEvaluatedKey);
         listData = listData.concat(data.Items);
         LastEvaluatedKey = data.LastEvaluatedKey;
+        console.log('in get all, last key ' + LastEvaluatedKey);
 
-    } while(typeof LastEvaluatedKey != "undefined");
+    } while(typeof LastEvaluatedKey != "undefined" && listData.length < absoluteLimit);
 
-    console.log("Scan Success, item count = ", listData.length);
-    return listData;
+    console.log("Scan Success, item count = ", listData.length + ", last key = " + JSON.stringify(LastEvaluatedKey));
+    return [LastEvaluatedKey, listData];
 }
 
 
 // handleHttpRequest is the entry point for Lambda requests
-exports.handler = function(request, context, callback) {
+exports.handler = async function(request, context, callback) {
     console.log('received event');
     
-    let date = "0";
-    if(request['pathParameters'] != undefined && request['pathParameters']['bydate'] != undefined) {
+    let date = "0", startKey = undefined, userLimit = process.env['LIMIT'];
+    /*if(request['pathParameters'] != undefined && request['pathParameters']['bydate'] != undefined) {
         date = request['pathParameters']['bydate'];
     }
-    else if(request['queryStringParameters'] != undefined && request['queryStringParameters']['lastModified'] != undefined) {
+    else */if(request['queryStringParameters'] != undefined && request['queryStringParameters']['lastModified'] != undefined) {
         date = request['queryStringParameters']['lastModified'];
+    }
+    if(request['queryStringParameters'] != undefined && request['queryStringParameters']['Last-Evaluated-Key'] != undefined) {
+        startKey = request['queryStringParameters']['Last-Evaluated-Key'];
+        startKey = JSON.parse(startKey);
+    }
+    if(request['queryStringParameters'] != undefined && request['queryStringParameters']['limit'] != undefined) {
+        userLimit = request['queryStringParameters']['limit'];
     }
     
     console.log('requested time: '+ date);
+    console.log('requested limit: '+ userLimit);
+    console.log('requested start key: '+ startKey);
 
     let response = {
       headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Last-Evaluated-Key': '',
       },
       body: '',
       statusCode: 200
     };
-
+    
     try {
-        const items = await getAll(date);
+        //let items = undefined;
+        let [LastEvaluatedKey, items] = await getAll(date, startKey, userLimit);
+        if (LastEvaluatedKey != undefined) {
+            response['headers']['Last-Evaluated-Key'] = JSON.stringify(LastEvaluatedKey);
+        }
+        
         response.body = JSON.stringify(items);
-        console.error("finish get all recipes");
+        console.log("finish get all recipes");
         callback(null, response);
 
     } catch(err) {
@@ -88,30 +119,4 @@ exports.handler = function(request, context, callback) {
         callback(null, response);
     }
     
-//     let listData = [];
-
-//     docClient.query(params, onQuery);
-
-//     function onQuery(err, data) {
-//       if (err) {
-//           console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
-//           callback(err);
-//       } else {
-//           // print all the data
-//           console.log("Scan succeeded. ", JSON.stringify(data));
-//           listData = listData.concat(data.Items);
-  
-//           // continue scanning if we have more movies, because
-//           // scan can retrieve a maximum of 1MB of data
-//           if (typeof data.LastEvaluatedKey != "undefined") {
-//               console.log("Scanning for more...");
-//               params.ExclusiveStartKey = data.LastEvaluatedKey;
-//               docClient.query(params, onQuery);
-//           } else {
-//             console.log("Scan Success, item count = ", listData.length);
-//             response.body = JSON.stringify(listData);
-//             callback(err, response);
-//           }
-//       }
-//   }
 };
