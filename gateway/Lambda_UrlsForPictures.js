@@ -31,7 +31,45 @@ function dateToString() {
             + ':' + (seconds <= 9 ? '0' + seconds : seconds);
 }
 
-function getItemFromRecipes(itemId) {
+
+function getRecipe(recipeId) {
+    const get_params = {
+        Limit: 2,
+        TableName: process.env['RECIPE_TABLE'],
+        KeyConditionExpression: "sharedKey = :v_key",
+        FilterExpression: "#id = :v_id",
+        ExpressionAttributeNames: {
+          "#id":  "id",
+        },
+        ExpressionAttributeValues: {
+            ":v_key": process.env['SHARED_KEY'],
+            ":v_id": recipeId
+        },
+        ReturnConsumedCapacity: "TOTAL"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.query(get_params, (err, data) => {
+            if (err) {
+                console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
+                return reject(err);
+            } else {
+                // print all the data
+                console.log("Scan succeeded. ", JSON.stringify(data));
+                console.log("Scan Success, item count = ", data.Items.length + ", last key = " + JSON.stringify(data.LastEvaluatedKey));
+                if (data.Items.length > 1) {
+                    console.log('Oh no! there are more recipes with ' + recipeId + ' id');
+                }
+                if(data.Count == 0){
+                    reject("recipe not found");
+                }
+                return resolve(data.Items[0]);
+            }
+        });
+    });
+}
+
+/* function getItemFromRecipes(itemId) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
@@ -61,9 +99,9 @@ function getItemFromRecipes(itemId) {
             }
         });
     });
-}
+} */
 
-function addToPending(recipe, fileNames) {
+/* function addToPending(recipe, fileNames) {
     const date = dateToString();
     const Table = process.env['PEND_IMG_TABLE'];
     
@@ -102,7 +140,7 @@ function addToPending(recipe, fileNames) {
             }
         });
     });
-}
+} */
 
 function generateFileNames(numOfFiles, recipe, extension) {
     let allowedExtenstions = ["jpg", "jpeg", "png"];
@@ -113,16 +151,16 @@ function generateFileNames(numOfFiles, recipe, extension) {
         throw "too many files!";
     }
     else {
-        let length = 0;
+        /* let length = 0;
         if(recipe['foodFiles'] != undefined) {
             length = recipe['foodFiles'].length;
-        }
-        let i;//, prefix = process.env['FOLDER'] + "/" + recipe.id;
+        } */
+        //let i;//, prefix = process.env['FOLDER'] + "/" + recipe.id;
         let files = [];
-        for(i = length; i < numOfFiles + length; i++){
+        for(let i = 0; i < numOfFiles; i++){
             const rand = Math.floor((1 + Math.random()) * 0x100) // add 3 random characters for the case of 2 users requesting urls in the same time
             .toString(16);
-            files[i - length] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + rand + "." + extension;
+            files[i] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + rand + "." + extension;
         }
         console.log("files\n" + files);
         return files;
@@ -164,10 +202,11 @@ exports.handler = async function(event, context, callback) {
             throw "request must contain recipe id";
         }
 
-        const numOfFiles = parseInt(eventBody['numOfFiles']);
+        const numOfFiles = parseInt(eventBody['numOfFiles'], 10);
         console.log('id = ' + id);
         //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
-        let recipeItem = await getItemFromRecipes(id);
+        //let recipeItem = await getItemFromRecipes(id);
+        let recipeItem = await getRecipe(id);
         console.log('generating names');
         let fileNames = generateFileNames(numOfFiles, recipeItem, eventBody['extension']);
         //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);

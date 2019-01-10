@@ -25,39 +25,43 @@ const s3 = new AWS.S3();
 //     });
 // }
 
-
-function getRecipe(key) {
-    let params = {
+function getRecipe(recipeId) {
+    const get_params = {
+        Limit: 2,
         TableName: process.env['RECIPE_TABLE'],
-        Key: {
-            id: key,
-            sharedKey: process.env['SHARED_KEY']
+        KeyConditionExpression: "sharedKey = :v_key",
+        FilterExpression: "#id = :v_id",
+        ExpressionAttributeNames: {
+          "#id":  "id",
         },
+        ExpressionAttributeValues: {
+            ":v_key": process.env['SHARED_KEY'],
+            ":v_id": recipeId
+        },
+        ReturnConsumedCapacity: "TOTAL"
     };
-    
-    /*"ProjectionExpression": "id, #recipeName, comments",
-        "ExpressionAttributeNames": {
-            "#recipeName": "name"
-        }*/
 
     return new Promise((resolve, reject) => {
-        docClient.get(params, (err, data) => {
+        docClient.query(get_params, (err, data) => {
             if (err) {
-                console.log("Error GET", err);
+                console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);
-            } 
-            else {
-                if(data['Item'] == undefined) {
-                    reject("item not found in recipes table");
+            } else {
+                // print all the data
+                console.log("Scan succeeded. ", JSON.stringify(data));
+                console.log("Scan Success, item count = ", data.Items.length + ", last key = " + JSON.stringify(data.LastEvaluatedKey));
+                if (data.Items.length > 1) {
+                    console.log('Oh no! there are more recipes with ' + recipeId + ' id');
                 }
-                else {
-                    console.log("Success GET", data);
-                    return resolve(data['Item']);
+                if(data.Count == 0){
+                    reject("recipe not found");
                 }
+                return resolve(data.Items[0]);
             }
         });
     });
 }
+
 
 // function removeFromPending(key) {
 //     let params = {
@@ -112,7 +116,7 @@ function deleteFromS3(bucket, key) {
 
 function invokeFoodProcessedUpdateRecipe(payload) {
     const params = {
-        FunctionName: 'FoodProcessedUpdateRecipe',
+        FunctionName: process.env['UPDATE_RECIPE_LAMBDA'],
         InvocationType: 'Event',
         LogType: 'Tail',
         Payload: JSON.stringify(payload)
@@ -136,8 +140,8 @@ function invokeFoodProcessedUpdateRecipe(payload) {
 function invokeThumbnailGenerator(payload) {
     const params = {
         FunctionName: 'ThumbnailGenerator',
-        InvocationType: 'RequestResponse',
-        LogType: 'Tail',
+        InvocationType: 'Event',
+        /* LogType: 'Tail', */
         Payload: JSON.stringify(payload)
     };
 
@@ -188,21 +192,33 @@ exports.handler = async function(event, context) {
         const id = decodeID(uploadedName);
         const fileName = decodeFileName(uploadedName);
         const recipe = await getRecipe(id);
+
+        const updateRecipePayload = {
+            'id': id,
+            'lastModifiedDate': recipe.lastModifiedDate,
+            'fileName': fileName,
+        };
+
         if (!recipe.hasOwnProperty('foodFiles')) { // if (!('foodFiles' in recipe))
             const payload = {
+                'bucket': bucket,
                 'filePath': uploadedName,
                 'fileName': fileName,
-                'targetDir': 'thumbnails'
+                'targetDir': 'thumbnails',
+                'invokeOnComplete': process.env['UPDATE_RECIPE_LAMBDA'],
+                'invokeOnComletePayload': updateRecipePayload
             };
             await invokeThumbnailGenerator(payload);
             console.log("finish thumbnail lambda");
+        } else {
+            /* const payload = {
+                'id': id,
+                'lastModifiedDate': recipe.lastModifiedDate,
+                'fileName': fileName,
+            }; */
+            await invokeFoodProcessedUpdateRecipe(updateRecipePayload);
         }
-
-        const payload = {
-            'id': id,
-            'fileName': fileName,
-        };
-        await invokeFoodProcessedUpdateRecipe(payload);        
+        
         console.log("exit food uploaded lambda");
 
         //let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});

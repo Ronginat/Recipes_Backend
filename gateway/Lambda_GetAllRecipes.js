@@ -7,20 +7,20 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 let params = {
     Limit: process.env['LIMIT'],
     TableName: process.env['TABLE'],
-    IndexName: process.env['INDEX'],
-    KeyConditionExpression: "sharedKey = :v_key AND lastModifiedAt >= :v_time",
-    ProjectionExpression: "#id, #name, #desc, #create, #modified, #uploader, #file, #images, #categories, #likes",
+    KeyConditionExpression: "sharedKey = :v_key AND lastModifiedDate >= :v_time",
+    ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #file, #images, #categories, #likes, #deleted",
     ExpressionAttributeNames: {
       "#id":  "id",
       "#name": "name",
       "#desc": "description",
-      "#create": "creationDate",
-      "#modified": "lastModifiedAt",
+      "#created": "creationDate",
+      "#modified": "lastModifiedDate",
       "#uploader": "uploader",
       "#file": "recipeFile",
       "#images": "foodFiles",
       "#categories": "categories",
-      "#likes": "likes"
+      "#likes": "likes",
+      "#deleted": "isDeleted"
     },
     ScanIndexForward: false,
     ReturnConsumedCapacity: "TOTAL"

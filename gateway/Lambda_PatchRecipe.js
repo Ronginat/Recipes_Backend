@@ -2,12 +2,12 @@ const AWS = require('aws-sdk');
 
 AWS.config.update({region: process.env['REGION']});
 //const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
-const documentClient = new AWS.DynamoDB.DocumentClient();
+const docClient = new AWS.DynamoDB.DocumentClient();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
-const freePatch = ["likes", "comments"];
-const authPatch = ["description", "categories"];
-const forbidPatch = ["id", "name", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedAt"];
+const freePatch = ["likes"];
+const authPatch = ["description", "categories", "comments"];
+const forbidPatch = ["id", "name", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedDate"];
 
 
 function setResponse(status, body){
@@ -30,10 +30,12 @@ function dateToString() {
     const hours = date.getUTCHours();
     const minutes = date.getUTCMinutes();
     const seconds = date.getUTCSeconds();
+    const millis = date.getUTCMilliseconds();
 
     return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
             + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds);
+            + ':' + (seconds <= 9 ? '0' + seconds : seconds)
+            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) );
 }
 
 function getUsername(token){
@@ -54,7 +56,45 @@ function getUsername(token){
     });
 }
 
-function getUploader(key) {
+
+function getRecipe(recipeId) {
+    const get_params = {
+        Limit: 2,
+        TableName: process.env['RECIPE_TABLE'],
+        KeyConditionExpression: "sharedKey = :v_key",
+        FilterExpression: "#id = :v_id",
+        ExpressionAttributeNames: {
+          "#id":  "id",
+        },
+        ExpressionAttributeValues: {
+            ":v_key": process.env['SHARED_KEY'],
+            ":v_id": recipeId
+        },
+        ReturnConsumedCapacity: "TOTAL"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.query(get_params, (err, data) => {
+            if (err) {
+                console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
+                return reject(err);
+            } else {
+                // print all the data
+                console.log("Scan succeeded. ", JSON.stringify(data));
+                console.log("Scan Success, item count = ", data.Items.length + ", last key = " + JSON.stringify(data.LastEvaluatedKey));
+                if (data.Items.length > 1) {
+                    console.log('Oh no! there are more recipes with ' + recipeId + ' id');
+                }
+                if(data.Count == 0){
+                    reject("recipe not found");
+                }
+                return resolve(data.Items[0]);
+            }
+        });
+    });
+}
+
+/* function getUploader(key) {
     let params = {
         "TableName": process.env['RECIPE_TABLE'],
         "Key": {
@@ -82,9 +122,9 @@ function getUploader(key) {
             }
         });
     });
-}
+} */
 
-function updateItemInRecipes(id, attributes) {
+/* function updateItemInRecipes(id, attributes) {
     let expression = generateExpressionAttributes(attributes);
 
     let params = {
@@ -113,7 +153,7 @@ function updateItemInRecipes(id, attributes) {
     });
 }
 
-function generateExpressionAttributes(attributes) {
+function generateExpressionAttributes(recipe, attributes) {
     //let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
     let date = dateToString();
     let Updates = "SET ";
@@ -145,13 +185,127 @@ function generateExpressionAttributes(attributes) {
         }
     }
 
-    Updates = Updates.concat("lastModifiedAt = :dateValue");
+    Updates = Updates.concat("lastModifiedDate = :dateValue");
     Values[':dateValue'] = date;
 
     return {
         "Updates": Updates,
         "Values": Values
     };
+} */
+
+
+function postComment(recipeId, comment, username, date) {
+    // const date = dateToString();
+    const params = {
+        TableName: process.env['RECIPE_COMMENT_TABLE'],
+        Item: {
+            'recipeId' : recipeId,
+            'creationDate': date,
+            'user': username,
+            'message': comment
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        docClient.put(params, function(err, data) {
+            if (err) {
+                console.log("Error recipe PUT", err);
+                return reject(err);
+            } 
+            else {
+                console.log("Success recipe PUT", data);
+                return resolve(data);
+            }
+        });
+    });
+}
+
+
+function deleteOldRecipe(partition, sort, id) {
+    const deleteParams = {
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            sharedKey: partition,
+            lastModifiedDate: sort
+        },
+        ConditionExpression: "#id = :v_id",
+        ExpressionAttributeNames: {
+            "#id": "id"
+        },
+        ExpressionAttributeValues: {
+            ":v_id": id
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        docClient.delete(deleteParams, function(err, data) {
+            if (err) {
+                console.log("Error recipe DELETE", err);
+                return reject(err);
+            } 
+            else {
+                console.log("Success recipe DELETE", data);
+                return resolve(data);
+            }
+        });
+    });
+}
+
+
+async function patchRecipe(request, oldRecipe, username, date) {
+    let needToDelete = false;
+    for(let value in request) {
+        switch(value) {
+            case "likes":
+                if (request[value] === 'like')
+                    oldRecipe.likes += 1;
+                if (request[value] === 'unlike')
+                oldRecipe.likes -= 1;
+                needToDelete = true;
+                break;
+            case "comments":
+                await postComment(oldRecipe.id, request[value], username);
+                break;
+            case "description":
+                oldRecipe.description = request[value];
+                needToDelete = true;
+                break;
+            case "categories":
+                oldRecipe.categories = request[value];
+                needToDelete = true;
+                break;
+        }
+    }
+
+    if(needToDelete) {
+        await deleteOldRecipe(process.env['SHARED_KEY'], oldRecipe.lastModifiedDate, oldRecipe.id);
+
+        oldRecipe.lastModifiedDate = date;
+
+        const putRecipeParams = {
+            TableName: process.env['RECIPE_TABLE'],
+            Item: oldRecipe
+        };
+
+        return new Promise((resolve, reject) => {
+            // Call DynamoDB to add the item to the table
+            docClient.put(putRecipeParams, function(err, data) {
+                if (err) {
+                    console.log("Error recipe PUT", err);
+                    return reject(err);
+                } 
+                else {
+                    console.log("Success recipe PUT", data);
+                    return resolve(data);
+                }
+            });
+        });
+    } else {
+        return new Promise(resolve => resolve());
+    }
 }
 
 
@@ -190,10 +344,16 @@ exports.handler = async function(event, context, callback) {
             } 
         }
 
+        const oldRecipe = await getRecipe(id);
+        if(oldRecipe == null) {
+            throw "recipe not found!";
+        }
+        let username = 'john doe';
+
         if(requiredAuth) {
             //authorization check. only the uploader can change some attributes
-            let username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
-            let uploader = await getUploader(id);
+            username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
+            const uploader = oldRecipe.uploader;
 
             if(username !== uploader) {
                 throw "not authorized to change requested attributes!";
@@ -201,12 +361,13 @@ exports.handler = async function(event, context, callback) {
         }
 
         //authorized or doing free patch. either way, a valid request
-        let results = await updateItemInRecipes(id, request);
+        // let results = await updateItemInRecipes(id, request);
+        const results = await patchRecipe(request, oldRecipe, username, dateToString());
 
         callback(null, setResponse(200, JSON.stringify(results)));
     }
     catch(err) {
-        callback(null, setResponse(400, err));
+        callback(null, setResponse(500, err));
     }
 
 };

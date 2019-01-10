@@ -1,6 +1,5 @@
 const AWS = require('aws-sdk');
 const nanoid = require('nanoid');
-//const Promise = require('promise');
 
 AWS.config.update({region: process.env['REGION']});
 //const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
@@ -28,10 +27,12 @@ function dateToString() {
     const hours = date.getUTCHours();
     const minutes = date.getUTCMinutes();
     const seconds = date.getUTCSeconds();
+    const millis = date.getUTCMilliseconds();
 
     return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
             + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds);
+            + ':' + (seconds <= 9 ? '0' + seconds : seconds)
+            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) );
 }
 
 function getUsername(token){

@@ -12,7 +12,7 @@ const
     THUMB_HEIGHT = 300,
     ALLOWED_FILETYPES = ['png', 'jpg', 'jpeg'];
 
-async function download(fileName, dir) {
+function download(fileName, dir) {
     const srcKey = dir + '/' + fileName;
     return new Promise((resolve, reject) => {
         s3.getObject({
@@ -31,7 +31,7 @@ async function download(fileName, dir) {
 * is smaller than 150px in both dimensions, keep the original image size and just 
 * convert to png for the thumbnail's display
 */
-async function createThumbnail(s3_response) {
+function createThumbnail(s3_response) {
     const image = gm(s3_response.Body);
 
     return new Promise((resolve, reject) => {
@@ -61,7 +61,7 @@ async function createThumbnail(s3_response) {
     });
 }
 
-async function uploadThumbnail(fileName, data) {
+function uploadThumbnail(fileName, data) {
     const dstKey = process.env['FOLDER'] + '/' + fileName;
     return new Promise((resolve, reject) => {
         s3.putObject({
@@ -77,6 +77,51 @@ async function uploadThumbnail(fileName, data) {
               else resolve(data);
           });
     });
+}
+
+function deleteFromS3(bucket, key) {
+    let params = {
+        Bucket: bucket, 
+        Key: key
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        s3.deleteObject(params, function(err, data) {
+            if (err) {
+                console.log(err, err.stack); // an error occurred
+                reject(err);
+            }
+            else {
+                console.log(data); // successful response
+                resolve(data);
+            }
+        });
+    });
+    
+}
+
+function invokeNextLambda(lambdaName, payload) {
+    const params = {
+        FunctionName: lambdaName,
+        InvocationType: 'Event',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+    };
+
+    return new Promise((resolve, reject) => {
+        lambda.invoke(params, (err,data) => {
+            if (err) { 
+                console.log(err, err.stack);
+                reject(err);
+            }
+            else {
+                console.log(data);
+                return resolve(data);
+            }
+        });
+    });
+    
 }
 
 exports.handler = async (event, context) => {
@@ -95,10 +140,14 @@ exports.handler = async (event, context) => {
         //const uploadRes = await uploadThumbnail(event.fileName, uploadReq);
         //console.log("upload response: \n" + uploadRes);
 
+        if(event.invokeOnComplete != undefined)
+            await invokeNextLambda(event.invokeOnComplete, event.invokeOnCompletePayload);
+
         context.done();
 
     } catch(err) {
         console.log("error when generating thumbnail.\n" + err);
+        await deleteFromS3(event.bucket, event.filePath);
         context.done(err);
     }
 };
