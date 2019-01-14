@@ -104,6 +104,9 @@ exports.handler = async function(request, context, callback) {
     try {
         //let items = undefined;
         let [LastEvaluatedKey, items] = await getAll(date, startKey, userLimit);
+        if (items === undefined || items.length == 0) {
+            response.statusCode = 304;
+        }
         if (LastEvaluatedKey != undefined) {
             response['headers']['Last-Evaluated-Key'] = JSON.stringify(LastEvaluatedKey);
         }

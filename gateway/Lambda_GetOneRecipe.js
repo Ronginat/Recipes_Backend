@@ -7,7 +7,8 @@ const documentClient = new AWS.DynamoDB.DocumentClient();
 function setResponse(status, body){
     let response = {
         headers: {
-            'Content-Type': 'application/json'},
+            'Content-Type': 'application/json'
+        },
         body: body,
         statusCode: status
     };
@@ -52,6 +53,12 @@ function getRecipeComments(key) {
         KeyConditionExpression: "recipeId = :v_id",
         ExpressionAttributeValues: {
             ":v_id": key,
+        },
+        ProjectionExpression: "#date, #message, #user",
+        ExpressionAttributeNames: {
+            "#date": "creationDate",
+            "#message": "message",
+            "#user": "user",
         },
     };    
 
