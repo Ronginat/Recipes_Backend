@@ -1,14 +1,12 @@
 const AWS = require('aws-sdk');
 
 AWS.config.update({region: process.env['REGION']});
-const documentClient = new AWS.DynamoDB.DocumentClient();
-
+const docClient = new AWS.DynamoDB.DocumentClient();
 
 function setResponse(status, body){
     let response = {
         headers: {
-            'Content-Type': 'application/json'
-        },
+            'Content-Type': 'application/json'},
         body: body,
         statusCode: status
     };
@@ -16,85 +14,104 @@ function setResponse(status, body){
     return response;
 }
 
-
-function getRecipe(key) {
-    let params = {
-        "TableName": process.env['RECIPE_TABLE'],
-        "Key": {
-            "id": key,
-            "sharedKey": process.env['SHARED_KEY']
-        },
+function setErrorResponse(status, err){
+    let response = {
+        headers: {
+            'Content-Type': 'application/json'},
+        body: err,
+        statusCode: status
     };
-    
+      
+    return response;
+}
+
+function getRecipe(sortKey) {
+    const get_params = {
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            "sharedKey": process.env['SHARED_KEY'],
+            "lastModifiedDate": sortKey
+        }
+    };
 
     return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        documentClient.get(params, function(err, data) {
+        docClient.get(get_params, (err, data) => {
             if (err) {
-                console.log("Error GET", err);
+                console.error("Couldn't get the recipe. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);
-            } 
-            else {
-                if(data['Item'] == undefined) {
-                    reject("item not found in recipes table");
-                }
-                else {
-                    console.log("Success GET", data);
-                    return resolve(data['Item']);
-                }
+            } else {
+                // print all the data
+                console.log("Get succeeded. ", JSON.stringify(data));
+                return resolve(data.Item);
             }
         });
     });
 }
 
-function getRecipeComments(key) {
-    const params = {
-        TableName: process.env['RECIPE_COMMENTS_TABLE'],
-        KeyConditionExpression: "recipeId = :v_id",
-        ExpressionAttributeValues: {
-            ":v_id": key,
-        },
-        ProjectionExpression: "#date, #message, #user",
+function getQueriedRecipe(recipeId) {
+    const get_params = {
+        /*Limit: 2,*/
+        TableName: process.env['RECIPE_TABLE'],
+        KeyConditionExpression: "sharedKey = :v_key",
+        FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
-            "#date": "creationDate",
-            "#message": "message",
-            "#user": "user",
+          "#id":  "id",
         },
-    };    
+        ExpressionAttributeValues: {
+            ":v_key": process.env['SHARED_KEY'],
+            ":v_id": recipeId
+        },
+        /*ReturnConsumedCapacity: "TOTAL"*/
+    };
 
     return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        documentClient.query(params, function(err, data) {
+        docClient.query(get_params, (err, data) => {
             if (err) {
-                console.log("Error GET", err);
+                console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);
-            } 
-            else {
-                console.log("Success GET", data);
-                return resolve(data['Items']);
+            } else {
+                // print all the data
+                console.log("Query succeeded. ", JSON.stringify(data));
+                if (data.Items.length > 1) {
+                    console.log('Oh no! there are more recipes with ' + recipeId + ' id');
+                }
+                if(data.Count === 0 || data.Items.length === 0) {
+                    return reject("recipe not found");
+                }
+                return resolve(data.Items[0]);
             }
         });
     });
 }
 
 
-exports.handler = async function(request, context, callback) {
-    console.log(request);
+exports.handler = async function(event, context, callback) {
+    let id = undefined, lastModifiedDate = undefined;
+    //console.log(event['body']);
 
     try {
-        if(request['pathParameters'] != undefined && request['pathParameters']['id'] != undefined) {
-            const id = request['pathParameters']['id'];
-            
-            //let item = await getRecipe(id);
-            const comments = await getRecipeComments(id);
+        if(event['pathParameters'] != undefined && event['pathParameters']['id'] != undefined) {
+            id = event['pathParameters']['id'];
+        } else {
+            throw "request must contain recipe id";
+        }
+        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModifiedDate'] != undefined) {
+            lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
+        }
         
-            console.log("response: " + JSON.stringify(comments));
-            callback(null, setResponse(200, JSON.stringify(comments)));
-        } 
-            else throw "must send recipe id!";
+        let recipe = undefined;
+        if(lastModifiedDate !== undefined) {
+            recipe = await getRecipe(lastModifiedDate);
+        } else {
+            recipe = await getQueriedRecipe(id);
+        }
+        
+        callback(null, setResponse(200 , JSON.stringify(recipe)));
     }
     catch(err) {
-        callback(null, setResponse(500, err));
+        //callback(err);
+        //callback(null, setResponse(500, err));
+        callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
     }
 
 };

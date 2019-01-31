@@ -1,20 +1,31 @@
 const AWS = require('aws-sdk');
 
 AWS.config.update({region: process.env['REGION']});
-//const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
 const freePatch = ["likes"];
-const authPatch = ["description", "categories", "comments"];
+const freePatchGetUserName = ["comments"];
+const authPatch = ["description", "categories"];
 const forbidPatch = ["id", "name", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedDate"];
 
 
-function setResponse(status, body){
+function setResponse(status/* , body */){
     let response = {
         headers: {
             'Content-Type': 'application/json'},
-        body: body,
+        /* body: body, */
+        statusCode: status
+    };
+      
+    return response;
+}
+
+function setErrorResponse(status, err){
+    let response = {
+        headers: {
+            'Content-Type': 'application/json'},
+        body: err,
         statusCode: status
     };
       
@@ -56,10 +67,32 @@ function getUsername(token){
     });
 }
 
-
-function getRecipe(recipeId) {
+function getRecipe(sortKey) {
     const get_params = {
-        Limit: 2,
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            "sharedKey": process.env['SHARED_KEY'],
+            "lastModifiedDate": sortKey
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.get(get_params, (err, data) => {
+            if (err) {
+                console.error("Couldn't get the recipe. Error JSON:", JSON.stringify(err, null, 2));
+                return reject(err);
+            } else {
+                // print all the data
+                console.log("Get succeeded. ", JSON.stringify(data));
+                return resolve(data.Item);
+            }
+        });
+    });
+}
+
+function getQueriedRecipe(recipeId) {
+    const get_params = {
+        /*Limit: 2,*/
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "sharedKey = :v_key",
         FilterExpression: "#id = :v_id",
@@ -70,7 +103,7 @@ function getRecipe(recipeId) {
             ":v_key": process.env['SHARED_KEY'],
             ":v_id": recipeId
         },
-        ReturnConsumedCapacity: "TOTAL"
+        /*ReturnConsumedCapacity: "TOTAL"*/
     };
 
     return new Promise((resolve, reject) => {
@@ -80,19 +113,218 @@ function getRecipe(recipeId) {
                 return reject(err);
             } else {
                 // print all the data
-                console.log("Scan succeeded. ", JSON.stringify(data));
-                console.log("Scan Success, item count = ", data.Items.length + ", last key = " + JSON.stringify(data.LastEvaluatedKey));
+                console.log("Query succeeded. ", JSON.stringify(data));
                 if (data.Items.length > 1) {
                     console.log('Oh no! there are more recipes with ' + recipeId + ' id');
                 }
-                if(data.Count == 0){
-                    reject("recipe not found");
+                if(data.Count === 0 || data.Items.length === 0) {
+                    return reject("recipe not found");
                 }
                 return resolve(data.Items[0]);
             }
         });
     });
 }
+
+
+function postComment(recipeId, comment, username, date) {
+    // const date = dateToString();
+    const params = {
+        TableName: process.env['RECIPE_COMMENT_TABLE'],
+        Item: {
+            'recipeId' : recipeId,
+            'creationDate': date,
+            'user': username,
+            'message': comment
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        docClient.put(params, function(err, data) {
+            if (err) {
+                console.log("Error recipe PUT", err);
+                return reject(err);
+            } 
+            else {
+                console.log("Success recipe PUT", data);
+                return resolve(data);
+            }
+        });
+    });
+}
+
+
+function deleteOldRecipe(partition, sort, id) {
+    const deleteParams = {
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            sharedKey: partition,
+            lastModifiedDate: sort
+        },
+        ConditionExpression: "#id = :v_id",
+        ExpressionAttributeNames: {
+            "#id": "id"
+        },
+        ExpressionAttributeValues: {
+            ":v_id": id
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        docClient.delete(deleteParams, function(err, data) {
+            if (err) {
+                console.log("Error recipe DELETE", err);
+                return reject(err);
+            } 
+            else {
+                console.log("Success recipe DELETE", data);
+                return resolve(data);
+            }
+        });
+    });
+}
+
+
+async function patchRecipe(request, oldRecipe, username, date) {
+    let needToDelete = false;
+    for(let value in request) {
+        switch(value) {
+            case "likes":
+                if (request[value] === 'like')
+                    oldRecipe.likes += 1;
+                if (request[value] === 'unlike')
+                oldRecipe.likes -= 1;
+                needToDelete = true;
+                break;
+            case "comments":
+                await postComment(oldRecipe.id, request[value], username, date);
+                break;
+            case "description":
+                oldRecipe.description = request[value];
+                needToDelete = true;
+                break;
+            case "categories":
+                oldRecipe.categories = request[value];
+                needToDelete = true;
+                break;
+        }
+    }
+
+    if(needToDelete) {
+        console.log('updated recipe: ' + JSON.stringify(oldRecipe));
+        await deleteOldRecipe(process.env['SHARED_KEY'], oldRecipe.lastModifiedDate, oldRecipe.id);
+
+        oldRecipe.lastModifiedDate = date;
+        
+        const putRecipeParams = {
+            TableName: process.env['RECIPE_TABLE'],
+            Item: oldRecipe
+            
+        };
+
+        return new Promise((resolve, reject) => {
+            // Call DynamoDB to add the item to the table
+            docClient.put(putRecipeParams, function(err, data) {
+                if (err) {
+                    console.log("Error recipe PUT", err);
+                    return reject(err);
+                } 
+                else {
+                    console.log("Success recipe PUT", data);
+                    return resolve(data);
+                }
+            });
+        });
+    } else {
+        return new Promise(resolve => resolve());
+    }
+}
+
+
+exports.handler = async function(event, context, callback) {
+    let id = undefined, lastModifiedDate = undefined, requiredAuth = false, requiredUserName = false;
+    let patchAttrs = [];
+
+    //console.log(event['body']);
+
+    try {
+        if(event['pathParameters'] != undefined && event['pathParameters']['id'] != undefined) {
+            id = event['pathParameters']['id'];
+        } else {
+            throw "request must contain recipe id";
+        }
+        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModifiedDate'] != undefined) {
+            lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
+        }
+        
+    
+        const request = JSON.parse(event['body']);
+
+        for(let key in request) {
+            if(forbidPatch.includes(key)) {
+                throw "requested property cannot be patched. " + key;
+            }
+            else{
+                if(authPatch.includes(key)) {
+                    requiredAuth = true;
+                    patchAttrs.push(key);
+                }
+                else if(freePatch.includes(key)) {
+                    patchAttrs.push(key);
+                } 
+                else if(freePatchGetUserName.includes(key)) {
+                    requiredUserName = true;
+                    patchAttrs.push(key);
+                }
+                else { // attribute not exists
+                    throw "requested property not exists. " + key;
+                }
+            } 
+        }
+
+        let oldRecipe = undefined;
+        if(lastModifiedDate !== undefined) {
+            oldRecipe = await getRecipe(lastModifiedDate);
+        } else {
+            oldRecipe = await getQueriedRecipe(id);
+        }
+        console.log("old recipe, " + oldRecipe);
+        if(oldRecipe == null || oldRecipe == undefined) {
+            throw "recipe not found!";
+        }
+        let username = 'john doe';
+
+        if(requiredAuth || requiredUserName)
+            username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
+
+        if(requiredAuth) {
+            //authorization check. only the uploader can change some attributes
+            //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
+            const uploader = oldRecipe.uploader;
+
+            if(username !== uploader) {
+                throw "not authorized to change requested attributes!";
+            }
+        }
+
+        //authorized or doing free patch. either way, a valid request
+        const results = await patchRecipe(request, oldRecipe, username, dateToString());
+
+        console.log('results, ' +  JSON.stringify(results));
+
+        callback(null, setResponse(200/* , JSON.stringify(results) */));
+    }
+    catch(err) {
+        //callback(err);
+        //callback(null, setResponse(500, err));
+        callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
+    }
+
+};
+
+
 
 /* function getUploader(key) {
     let params = {
@@ -193,181 +425,3 @@ function generateExpressionAttributes(recipe, attributes) {
         "Values": Values
     };
 } */
-
-
-function postComment(recipeId, comment, username, date) {
-    // const date = dateToString();
-    const params = {
-        TableName: process.env['RECIPE_COMMENT_TABLE'],
-        Item: {
-            'recipeId' : recipeId,
-            'creationDate': date,
-            'user': username,
-            'message': comment
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        docClient.put(params, function(err, data) {
-            if (err) {
-                console.log("Error recipe PUT", err);
-                return reject(err);
-            } 
-            else {
-                console.log("Success recipe PUT", data);
-                return resolve(data);
-            }
-        });
-    });
-}
-
-
-function deleteOldRecipe(partition, sort, id) {
-    const deleteParams = {
-        TableName: process.env['RECIPE_TABLE'],
-        Key: {
-            sharedKey: partition,
-            lastModifiedDate: sort
-        },
-        ConditionExpression: "#id = :v_id",
-        ExpressionAttributeNames: {
-            "#id": "id"
-        },
-        ExpressionAttributeValues: {
-            ":v_id": id
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        docClient.delete(deleteParams, function(err, data) {
-            if (err) {
-                console.log("Error recipe DELETE", err);
-                return reject(err);
-            } 
-            else {
-                console.log("Success recipe DELETE", data);
-                return resolve(data);
-            }
-        });
-    });
-}
-
-
-async function patchRecipe(request, oldRecipe, username, date) {
-    let needToDelete = false;
-    for(let value in request) {
-        switch(value) {
-            case "likes":
-                if (request[value] === 'like')
-                    oldRecipe.likes += 1;
-                if (request[value] === 'unlike')
-                oldRecipe.likes -= 1;
-                needToDelete = true;
-                break;
-            case "comments":
-                await postComment(oldRecipe.id, request[value], username);
-                break;
-            case "description":
-                oldRecipe.description = request[value];
-                needToDelete = true;
-                break;
-            case "categories":
-                oldRecipe.categories = request[value];
-                needToDelete = true;
-                break;
-        }
-    }
-
-    if(needToDelete) {
-        await deleteOldRecipe(process.env['SHARED_KEY'], oldRecipe.lastModifiedDate, oldRecipe.id);
-
-        oldRecipe.lastModifiedDate = date;
-
-        const putRecipeParams = {
-            TableName: process.env['RECIPE_TABLE'],
-            Item: oldRecipe
-        };
-
-        return new Promise((resolve, reject) => {
-            // Call DynamoDB to add the item to the table
-            docClient.put(putRecipeParams, function(err, data) {
-                if (err) {
-                    console.log("Error recipe PUT", err);
-                    return reject(err);
-                } 
-                else {
-                    console.log("Success recipe PUT", data);
-                    return resolve(data);
-                }
-            });
-        });
-    } else {
-        return new Promise(resolve => resolve());
-    }
-}
-
-
-exports.handler = async function(event, context, callback) {
-    let id = undefined, requiredAuth = false;
-    let patchAttrs = [];
-
-    console.log(event['body']);
-
-    try {
-        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['id'] != undefined) {
-            id = event['queryStringParameters']['id'];
-        }
-        else {
-            throw "request must contain recipe id";
-        }
-    
-        const request = JSON.parse(event['body']);
-        //let request = JSON.parse(event['body']['attributes']);
-    
-        for(let key in request) {
-            if(forbidPatch.includes(key)) {
-                throw "requested property cannot be patched. " + key;
-            }
-            else{
-                if(authPatch.includes(key)) {
-                    requiredAuth = true;
-                    patchAttrs.push(key);
-                }
-                else if(freePatch.includes(key)) {
-                    patchAttrs.push(key);
-                }
-                else { // attribute not exists
-                    throw "requested property not exists. " + key;
-                }
-            } 
-        }
-
-        const oldRecipe = await getRecipe(id);
-        if(oldRecipe == null) {
-            throw "recipe not found!";
-        }
-        let username = 'john doe';
-
-        if(requiredAuth) {
-            //authorization check. only the uploader can change some attributes
-            username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
-            const uploader = oldRecipe.uploader;
-
-            if(username !== uploader) {
-                throw "not authorized to change requested attributes!";
-            }
-        }
-
-        //authorized or doing free patch. either way, a valid request
-        // let results = await updateItemInRecipes(id, request);
-        const results = await patchRecipe(request, oldRecipe, username, dateToString());
-
-        callback(null, setResponse(200, JSON.stringify(results)));
-    }
-    catch(err) {
-        callback(null, setResponse(500, err));
-    }
-
-};

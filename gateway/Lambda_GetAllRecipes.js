@@ -7,7 +7,7 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 let params = {
     Limit: process.env['LIMIT'],
     TableName: process.env['TABLE'],
-    KeyConditionExpression: "sharedKey = :v_key AND lastModifiedDate >= :v_time",
+    KeyConditionExpression: "sharedKey = :v_key AND #modified >= :v_time",
     ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #file, #images, #categories, #likes, #deleted",
     ExpressionAttributeNames: {
       "#id":  "id",
@@ -104,7 +104,7 @@ exports.handler = async function(request, context, callback) {
     try {
         //let items = undefined;
         let [LastEvaluatedKey, items] = await getAll(date, startKey, userLimit);
-        if (items === undefined || items.length == 0) {
+        if (startKey != undefined && (items === undefined || items.length == 0)) {
             response.statusCode = 304;
         }
         if (LastEvaluatedKey != undefined) {
