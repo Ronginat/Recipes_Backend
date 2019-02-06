@@ -2,7 +2,6 @@ const AWS = require('aws-sdk');
 const nanoid = require('nanoid');
 
 AWS.config.update({region: process.env['REGION']});
-//const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
@@ -84,71 +83,13 @@ function putRecipeInPendings(recipe, contentFile) {
     });
 }
 
-// function addFilesToPendings(recipe, fileNames) {
-//     //const date = dateToString();
-//     const Table = process.env['PEND_HTML'];
-
-//     let i = 0, filesArray = [];
-//     for(i = 0; i < fileNames.length; i++) {
-//         filesArray.push({
-//             PutRequest: {
-//                 Item: {
-//                     "fileName": {"S": fileNames[i]},
-//                     "createdAt": {"S": recipe.createdAt},
-//                     "id" : {"S": recipe.id},
-//                     "uploader": {"S": recipe.uploader}
-//                 }
-//             }
-//         });
-//     }
-
-//     const params = {
-//         RequestItems: {
-//             Table: filesArray
-//         }
-//     };
-
-//     return new Promise((resolve, reject) => {
-//         // Call DynamoDB to add the item to the table
-//         ddb.batchWriteItem(params, function(err, data) {
-//             if (err) {
-//                 console.log("Error pend batch PUT", err);
-//                 return reject(err);
-//             } 
-//             else {
-//                 console.log("Success pend batch PUT", data);
-//                 // data['UnproccessedItems'].forEach(element => {
-//                 //     results.push(element['PutRequest']['fileName']);
-//                 // });
-//                 return resolve(data);
-//             }
-//         });
-//     });
-// }
-
-// function generateImagesNames(numOfFiles, recipe, extension) {
-//     let allowedExtenstions = ["jpg", "jpeg", "png"];
-//     if(!allowedExtenstions.includes(extension)) {
-//         throw "extention not supported";
-//     }
-//     else if(numOfFiles > process.env['MAX_FILES_PER_UPLOAD']) {
-//         throw "too many files!";
-//     }
-//     else {
-//         //let i, name = process.env['IMAGES_FOLDER'] + "/" + recipe.name;
-//         const name = recipe.name;
-//         let i, files = [];
-//         for(i = 0; i < numOfFiles; i++){
-//             files[i] = name + i.toString() + "---" + recipe.id + "." + extension;
-//         }
-//         return files;
-//     }
-// }
-
 function generateContentName(recipe) {
-    //let name = process.env['CONTENT_FOLDER'] + "/" + recipe.name, extension = "html";
-    let name = 'recipe', extension = "html";
-    return name + "---" + recipe.id + "." + extension;
+    /* let name = 'recipe', extension = "html";
+    return name + "---" + recipe.id + "." + extension; */
+    const extension = 'hmtl';
+    const rand = Math.floor((1 + Math.random()) * 0x100) // add 3 random characters for the case of modifying a recipe
+            .toString(16);
+    return recipe.id + "--recipe--" + rand + "." + extension;
 }
 
 function signUrl(fileName) {
@@ -164,35 +105,12 @@ function signUrl(fileName) {
     return s3.getSignedUrl('putObject', params);
 }
 
-// function signUrls(fileNames) {
-//     const myBucket = process.env['BUCKET'];
-//     const signedUrlExpireSeconds = 60 * 5; //5 minutes
-//     let i = 0;
-
-//     let params = {
-//         Bucket: myBucket,
-//         Key: fileNames[i],
-//         Expires: signedUrlExpireSeconds
-//     };
-
-//     let urls = [];
-//     for(i = 0; i < fileNames.length; i++) {
-//         params['Key'] = fileNames[i];
-//         urls[i] = s3.getSignedUrl('putObject', params);
-//     }
-
-//     return urls;
-// }
 
 exports.handler = async function(event, context, callback) {
     console.log(event);
 
-    // let results = {};
-    // results['url'] = "url response from server"
-    // callback(null, setResponse(200, JSON.stringify(results)));
     let eventBody = JSON.parse(event['body']);
-    //let categories = JSON.parse(body.categories);
-
+    
     try {
         let results = {};
                            //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
@@ -201,21 +119,18 @@ exports.handler = async function(event, context, callback) {
         const newId = nanoid(12);
         console.log('generated id = ' + newId);
         eventBody['recipe']['id'] = newId;
-        //let imagesNames = generateImagesNames(eventBody['numOfFiles'], eventBody, eventBody['extension']);
+
         let htmlName = generateContentName(eventBody['recipe']);
         console.log('generated html file name: ' + htmlName);
         let recipeItem = await putRecipeInPendings(eventBody['recipe'], htmlName);  
-        console.log('recipe item in db: \n' + JSON.stringify(recipeItem));
-        //let pend = await addHtmlToPendings(recipeItem, fileNames);
-        //let urls = {};
-        //urls['images'] = signUrls(imagesNames);
+        //console.log('recipe item in db: \n' + JSON.stringify(recipeItem));
+  
         const url = signUrl(htmlName);
         console.log('signed url: ' + url);
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
         results['Item'] = recipeItem;
-        //results['imagesNames'] = imagesNames;
         results['url'] = url;
         
         callback(null, setResponse(200, JSON.stringify(results)));        

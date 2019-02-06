@@ -23,10 +23,11 @@ function dateToString() {
             + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) );
 }
 
-function getIdFromFileName(name) {
-    const dot = name.lastIndexOf(".");
+function decodeID(name) {
+    /* const dot = name.lastIndexOf(".");
     let temp = name.substring(0, dot);
-    return temp.split("---")[1];
+    return temp.split("---")[1]; */
+    return name.split("/")[1].split("--recipe--")[0];
 }
 
 function putItemInRecipes(pendItem) {
@@ -149,7 +150,7 @@ exports.handler = async function(event, context) {
     let uploadedName = record['object']['key'];
     let bucket = record['bucket']['name'];
 
-    const id = getIdFromFileName(uploadedName);
+    const id = decodeID(uploadedName);
     try {
         let removedPend = await removeFromPending(id);
         let postedRecipeItem = await putItemInRecipes(removedPend);

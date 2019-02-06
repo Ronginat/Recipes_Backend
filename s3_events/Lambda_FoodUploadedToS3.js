@@ -117,15 +117,17 @@ function invokeThumbnailGenerator(payload) {
 }
 
 function decodeID(name) {
-    const dirName = process.env['FOLDER'];
+    /* const dirName = process.env['FOLDER'];
     const dirLength = dirName.length;
-    return name.substring(dirLength + 1, dirLength + 1 + 12);
+    return name.substring(dirLength + 1, dirLength + 1 + parseInt(process.env['RECIPE_ID_LENGTH'], 10)); */
+    return name.split("/")[1].split("--food--")[0];
 }
 
 function decodeFileName(name) {
-    const dirName = process.env['FOLDER'];
+    /* const dirName = process.env['FOLDER'];
     const dirLength = dirName.length;
-    return name.substring(dirLength + 1);
+    return name.substring(dirLength + 1); */
+    return name.split("/")[1];
 }
 
 

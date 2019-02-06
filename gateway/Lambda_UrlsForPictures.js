@@ -92,14 +92,11 @@ function generateFileNames(numOfFiles, recipe, extension) {
             .toString(16);
             files[i] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + rand + "." + extension;
         }
-        console.log("files\n" + files);
         return files;
     }
 }
 
 function signUrls(fileNames) {
-    console.log('start sign urls');
-    console.log(fileNames);
     const myBucket = process.env['BUCKET'];
     const signedUrlExpireSeconds = 60 * 5; //5 minutes
     let i = 0;
@@ -153,6 +150,7 @@ exports.handler = async function(event, context, callback) {
             if(recipeItem !== undefined && recipeItem !== null) {
                 console.log('generating names');
                 let fileNames = generateFileNames(numOfFiles, recipeItem, eventBody['extension']);
+                console.log("files\n" + fileNames);
                 //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
                 console.log('signing urls');
                 let urls = signUrls(fileNames);
