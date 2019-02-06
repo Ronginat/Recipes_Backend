@@ -85,7 +85,8 @@ function getRecipe(sortKey) {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
-                    return reject("recipe not found");
+                    return resolve(null);
+                    //return reject("recipe not found");
                 return resolve(data.Item);
             }
         });
@@ -246,7 +247,8 @@ exports.handler = async function(event, context, callback) {
         let oldRecipe = undefined;
         if(lastModifiedDate !== undefined) {
             oldRecipe = await getRecipe(lastModifiedDate);
-        } else {
+        } 
+        if(lastModifiedDate === undefined || oldRecipe === undefined || oldRecipe === null) {
             oldRecipe = await getQueriedRecipe(id);
         }
         console.log("old recipe, " + oldRecipe);

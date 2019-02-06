@@ -2,7 +2,6 @@ const AWS = require('aws-sdk');
 
 AWS.config.update({region: process.env['REGION']});
 const docClient = new AWS.DynamoDB.DocumentClient();
-const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const s3 = new AWS.S3();
 
 function setResponse(status, body){
@@ -16,25 +15,35 @@ function setResponse(status, body){
     return response;
 }
 
-function dateToString() {
-    const date = new Date();
-    var day = date.getUTCDate();
-    var month = date.getUTCMonth() + 1;
-    var year = date.getUTCFullYear();
+function getRecipe(sortKey) {
+    const get_params = {
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            "sharedKey": process.env['SHARED_KEY'],
+            "lastModifiedDate": sortKey
+        }
+    };
 
-    const hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    const seconds = date.getUTCSeconds();
-
-    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
-            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds);
+    return new Promise((resolve, reject) => {
+        docClient.get(get_params, (err, data) => {
+            if (err) {
+                console.error("Couldn't get the recipe. Error JSON:", JSON.stringify(err, null, 2));
+                return reject(err);
+            } else {
+                // print all the data
+                console.log("Get succeeded. ", JSON.stringify(data));
+                if(data.Item === undefined)
+                    return resolve(null);
+                    //return reject("recipe not found");
+                return resolve(data.Item);
+            }
+        });
+    });
 }
 
-
-function getRecipe(recipeId) {
+function getQueriedRecipe(recipeId) {
     const get_params = {
-        Limit: 2,
+        /* Limit: 2, */
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "sharedKey = :v_key",
         FilterExpression: "#id = :v_id",
@@ -55,92 +64,18 @@ function getRecipe(recipeId) {
                 return reject(err);
             } else {
                 // print all the data
-                console.log("Scan succeeded. ", JSON.stringify(data));
-                console.log("Scan Success, item count = ", data.Items.length + ", last key = " + JSON.stringify(data.LastEvaluatedKey));
+                console.log("Query succeeded. ", JSON.stringify(data));
                 if (data.Items.length > 1) {
                     console.log('Oh no! there are more recipes with ' + recipeId + ' id');
                 }
-                if(data.Count == 0){
-                    reject("recipe not found");
+                if(data.Count === 0 || data.Items.length === 0) {
+                    return reject("recipe not found");
                 }
                 return resolve(data.Items[0]);
             }
         });
     });
 }
-
-/* function getItemFromRecipes(itemId) {
-    const params = {
-        TableName: process.env['RECIPE_TABLE'],
-        Key: {
-            id: itemId,
-            sharedKey: process.env['SHARED_KEY']
-        }
-        
-    };
-    //"sharedKey": process.env['SHARED_KEY']
-    // ProjectionExpression: "id, #recipeName, foodFiles",
-    //     ExpressionAttributeNames: {
-    //         '#recipeName': 'name'
-    //     }
-    //delete params['ProjectionExpression'];
-    //delete params['ExpressionAttributeNames'];
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to read the item from the table
-        docClient.get(params, function(err, data) {
-            if (err) {
-                console.log("Error recipe GET", err);
-                return reject(err);
-            } 
-            else {
-                console.log("Success recipe GET", data);
-                return resolve(data.Item);
-            }
-        });
-    });
-} */
-
-/* function addToPending(recipe, fileNames) {
-    const date = dateToString();
-    const Table = process.env['PEND_IMG_TABLE'];
-    
-    let i = 0, filesArray = [];
-    for(i = 0; i < fileNames.length; i++) {
-        filesArray.push({
-            PutRequest: {
-                Item: {
-                    "fileName": {"S": fileNames[i]},
-                    "createdAt": {"S": date},
-                    "id" : {"S": recipe.id}
-                }
-            }
-        });
-    }
-    //params.RequestItems[Table] = filesArray;
-    const params = {
-        RequestItems: {
-            Table: filesArray
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        ddb.batchWriteItem(params, function(err, data) {
-            if (err) {
-                console.log("Error pend batch PUT", err);
-                return reject(err);
-            } 
-            else {
-                console.log("Success pend batch PUT", data);
-                // data['UnproccessedItems'].forEach(element => {
-                //     results.push(element['PutRequest']['fileName']);
-                // });
-                return resolve(data);
-            }
-        });
-    });
-} */
 
 function generateFileNames(numOfFiles, recipe, extension) {
     let allowedExtenstions = ["jpg", "jpeg", "png"];
@@ -151,11 +86,6 @@ function generateFileNames(numOfFiles, recipe, extension) {
         throw "too many files!";
     }
     else {
-        /* let length = 0;
-        if(recipe['foodFiles'] != undefined) {
-            length = recipe['foodFiles'].length;
-        } */
-        //let i;//, prefix = process.env['FOLDER'] + "/" + recipe.id;
         let files = [];
         for(let i = 0; i < numOfFiles; i++){
             const rand = Math.floor((1 + Math.random()) * 0x100) // add 3 random characters for the case of 2 users requesting urls in the same time
@@ -191,38 +121,51 @@ function signUrls(fileNames) {
 
 exports.handler = async function(event, context, callback) {
     console.log(event);
-    let eventBody = JSON.parse(event['body']);
+    const eventBody = JSON.parse(event['body']);
 
     try {
-        let results = {}, id;
-        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['id'] != undefined) {
+        let id = undefined, lastModifiedDate = undefined;
+        /* if(event['queryStringParameters'] != undefined && event['queryStringParameters']['id'] != undefined) {
             id = event['queryStringParameters']['id'];
+        } */
+        if(event['pathParameters'] != undefined && event['pathParameters']['id'] != undefined) {
+            id = event['pathParameters']['id'];
+            console.log('id = ' + id);
         }
         else {
             throw "request must contain recipe id";
         }
+        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModifiedDate'] != undefined) {
+            lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
+        }
 
-        const numOfFiles = parseInt(eventBody['numOfFiles'], 10);
-        console.log('id = ' + id);
-        //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
-        //let recipeItem = await getItemFromRecipes(id);
-        let recipeItem = await getRecipe(id);
-        console.log('generating names');
-        let fileNames = generateFileNames(numOfFiles, recipeItem, eventBody['extension']);
-        //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
-        console.log('signing urls');
-        let urls = signUrls(fileNames);
-
-        //if (Object.keys(pend.UnprocessedItems).length === 0)
-
-        //results['Item'] = recipeItem;
-        //results['fileNames'] = fileNames;
-        //results['urls'] = urls;
+        if(id !== undefined) {
+            const numOfFiles = parseInt(eventBody['numOfFiles'], 10);
         
-        callback(null, setResponse(200, JSON.stringify(urls)));
+            let recipeItem = undefined;
+            if(lastModifiedDate !== undefined) {
+                recipeItem = await getRecipe(lastModifiedDate);
+            } 
+            if(lastModifiedDate === undefined || recipeItem === undefined || recipeItem === null) {
+                recipeItem = await getQueriedRecipe(id);
+            }
 
+            if(recipeItem !== undefined && recipeItem !== null) {
+                console.log('generating names');
+                let fileNames = generateFileNames(numOfFiles, recipeItem, eventBody['extension']);
+                //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
+                console.log('signing urls');
+                let urls = signUrls(fileNames);
+
+                callback(null, setResponse(200, JSON.stringify(urls)));
+            } 
+            else
+                callback(null, setResponse(400, "recipe not found"));
+        }
+        //if (Object.keys(pend.UnprocessedItems).length === 0)
+        
     } catch(err) {
         console.log(err);
-        callback(null, setResponse(400, err));
+        callback(null, setResponse(500, err));
     }
 };

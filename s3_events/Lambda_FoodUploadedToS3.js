@@ -4,30 +4,9 @@ AWS.config.update({region: process.env['REGION']});
 
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
-// const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
-
-// function getUsername(token){
-//     let params = {
-//         AccessToken: token
-//       };
-//     return new Promise((resolve, reject) => {
-//         cognitoidentityserviceprovider.getUser(params, function(err, data) {
-//             if (err) {
-//                 console.log(err); // an error occurred
-//                 return reject(err);
-//             }
-//             else {
-//                 console.log(data); // successful response
-//                 return resolve(data.Username);
-//             }    
-//         });
-//     });
-// }
-
-function getRecipe(recipeId) {
-    const get_params = {
-        Limit: 2,
+function getQueriedRecipe(recipeId) {
+    const quey_params = {
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "sharedKey = :v_key",
         FilterExpression: "#id = :v_id",
@@ -42,19 +21,18 @@ function getRecipe(recipeId) {
     };
 
     return new Promise((resolve, reject) => {
-        docClient.query(get_params, (err, data) => {
+        docClient.query(quey_params, (err, data) => {
             if (err) {
                 console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);
             } else {
                 // print all the data
-                console.log("Scan succeeded. ", JSON.stringify(data));
-                console.log("Scan Success, item count = ", data.Items.length + ", last key = " + JSON.stringify(data.LastEvaluatedKey));
+                console.log("Query succeeded. ", JSON.stringify(data));
                 if (data.Items.length > 1) {
                     console.log('Oh no! there are more recipes with ' + recipeId + ' id');
                 }
-                if(data.Count == 0){
-                    reject("recipe not found");
+                if(data.Count === 0 || data.Items.length === 0) {
+                    return reject("recipe not found");
                 }
                 return resolve(data.Items[0]);
             }
@@ -62,38 +40,8 @@ function getRecipe(recipeId) {
     });
 }
 
-
-// function removeFromPending(key) {
-//     let params = {
-//         "TableName": process.env['PEND_IMG_TABLE'],
-//         "Key": {
-//             "fileName": key
-//         },
-//         "ReturnValues": "ALL_OLD"
-//     };
-
-//     return new Promise((resolve, reject) => {
-//         // Call DynamoDB to add the item to the table
-//         docClient.delete(params, function(err, data) {
-//             if (err) {
-//                 console.log("Error pend DELETE", err);
-//                 return reject(err);
-//             } 
-//             else {
-//                 if(data['Attributes'] == null) {
-//                     reject("uploaded file not found in pending table");
-//                 }
-//                 else {
-//                     console.log("Success pend DELETE", data);
-//                     return resolve(data['Attributes']);
-//                 }
-//             }
-//         });
-//     });
-// }
-
 function deleteFromS3(bucket, key) {
-    let params = {
+    const params = {
         Bucket: bucket, 
         Key: key
     };
@@ -126,7 +74,7 @@ function invokeFoodProcessedUpdateRecipe(payload) {
         lambda.invoke(params, (err,data) => {
             if (err) { 
                 console.log(err, err.stack);
-                reject(err);
+                return reject(err);
             }
             else {
                 console.log(data);
@@ -139,7 +87,7 @@ function invokeFoodProcessedUpdateRecipe(payload) {
 
 function invokeThumbnailGenerator(payload) {
     const params = {
-        FunctionName: 'ThumbnailGenerator',
+        FunctionName: process.env['THUMBNAIL_GENERATOR_LAMBDA'],
         InvocationType: 'Event',
         /* LogType: 'Tail', */
         Payload: JSON.stringify(payload)
@@ -188,10 +136,9 @@ exports.handler = async function(event, context) {
 
     console.log(record);
     try {
-        //let removedPend = await removeFromPending(uploadedName);
         const id = decodeID(uploadedName);
         const fileName = decodeFileName(uploadedName);
-        const recipe = await getRecipe(id);
+        const recipe = await getQueriedRecipe(id);
 
         const updateRecipePayload = {
             'id': id,
@@ -220,10 +167,6 @@ exports.handler = async function(event, context) {
         }
         
         console.log("exit food uploaded lambda");
-
-        //let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
-
-        //console.log("recipe upload successfully.\n" + JSON.stringify(updatedRecipeItem));
 
     } catch(err) {
         console.log("error when uploading recipe.\n" + err);
