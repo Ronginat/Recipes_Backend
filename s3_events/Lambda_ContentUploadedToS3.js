@@ -4,6 +4,10 @@ AWS.config.update({region: process.env['REGION']});
 //const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
+const lambda = new AWS.Lambda({
+    region: process.env['SNS_REGION'],
+    apiVersion: '2015-03-31'
+});
 
 
 function dateToString() {
@@ -115,6 +119,28 @@ function deleteFromS3(bucket, key) {
     });
 }
 
+function invokePublishLambda(payload) {
+    const params = {
+        FunctionName: process.env['SNS_PUBLISH_LAMBDA'],
+        InvocationType: 'Event',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+    };
+
+    return new Promise((resolve, reject) => {
+        lambda.invoke(params, (err,data) => {
+            if (err) { 
+                console.log(err, err.stack);
+                reject(err);
+            }
+            else {
+                console.log(data);
+                return resolve(data);
+            }
+        });
+    });
+}
+
 // function deletePendingImagesFromS3(images) {
 //     let array = [];
 //     let params = {
@@ -150,17 +176,34 @@ exports.handler = async function(event, context) {
     let uploadedName = record['object']['key'];
     let bucket = record['bucket']['name'];
 
+    let posted = false;
+
     const id = decodeID(uploadedName);
     try {
         let removedPend = await removeFromPending(id);
         let postedRecipeItem = await putItemInRecipes(removedPend);
+        postsed = true;
+        await invokePublishLambda({
+            "message": "click to view the recipe",
+            "title": removedPend.name + ", by " + removedPend.uploader,
+            "topic": process.env['NEW_RECIPE_TOPIC'],
+            "id": removedPend.id,
+            "messageAttributes": {
+                "categories" : {
+                    "DataType": "String.Array",
+                    "StringValue": JSON.stringify(removedPend.categories)
+                }
+            }
+        });
         //let removedImages = await deletePendingImagesFromS3(removedPend['pendImages']);
         
         console.log("recipe upload successfully.\n" + JSON.stringify(postedRecipeItem));
 
     } catch(err) {
         console.log("error when uploading recipe.\n" + err);
-        console.log("deleting file from bucket...");
-        await deleteFromS3(bucket, uploadedName);
+        if(!posted) {
+            console.log("deleting file from bucket...");
+            await deleteFromS3(bucket, uploadedName);
+        }
     }
 };
