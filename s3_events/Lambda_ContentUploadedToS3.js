@@ -5,7 +5,7 @@ AWS.config.update({region: process.env['REGION']});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 const lambda = new AWS.Lambda({
-    region: process.env['SNS_REGION'],
+    region: AWS.config.region,
     apiVersion: '2015-03-31'
 });
 

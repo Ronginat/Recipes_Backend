@@ -3,7 +3,10 @@ const AWS = require('aws-sdk');
 AWS.config.update({region: process.env['REGION']});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
-
+const lambda = new AWS.Lambda({
+    region: AWS.config.region,
+    apiVersion: '2015-03-31'
+});
 
 function setResponse(status/* , body */){
     let response = {
@@ -84,9 +87,10 @@ function getUsername(token){
         });
     });
 }
+ */
 
 function getQueriedRecipe(recipeId) {
-    const get_params = {
+    const quey_params = {
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "sharedKey = :v_key",
         FilterExpression: "#id = :v_id",
@@ -97,11 +101,11 @@ function getQueriedRecipe(recipeId) {
             ":v_key": process.env['SHARED_KEY'],
             ":v_id": recipeId
         },
-        //ReturnConsumedCapacity: "TOTAL"
+        ReturnConsumedCapacity: "TOTAL"
     };
 
     return new Promise((resolve, reject) => {
-        docClient.query(get_params, (err, data) => {
+        docClient.query(quey_params, (err, data) => {
             if (err) {
                 console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);
@@ -119,7 +123,7 @@ function getQueriedRecipe(recipeId) {
         });
     });
 }
- */
+
 
 function postComment(recipeId, comment, username, date) {
     // const date = dateToString();
@@ -148,9 +152,56 @@ function postComment(recipeId, comment, username, date) {
     });
 }
 
+function getUserFromDB(name) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Key: {
+            "username" : name
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.get(params, (err, data) => {
+            if (err) {
+                console.error("Couldn't get the user. Error JSON:", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                // print all the data
+                console.log("Get succeeded. ", JSON.stringify(data));
+                if(data.Item === undefined)
+                    reject("user not found, " + name);
+                resolve(data.Item);
+            }
+        });
+    });
+}
+
+function invokePublishLambda(payload) {
+    const params = {
+        FunctionName: process.env['SNS_PUBLISH_LAMBDA'],
+        InvocationType: 'Event',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+    };
+
+    return new Promise((resolve, reject) => {
+        lambda.invoke(params, (err,data) => {
+            if (err) { 
+                console.log(err, err.stack);
+                reject(err);
+            }
+            else {
+                console.log(data);
+                resolve(data);
+            }
+        });
+    });
+}
+
 
 exports.handler = async function(event, context, callback) {
     let id = undefined;//, lastModifiedDate = undefined;
+    let posted = false;
 
     //console.log(event['body']);
 
@@ -163,34 +214,39 @@ exports.handler = async function(event, context, callback) {
         /* if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModifiedDate'] != undefined) {
             lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         } */
-        
     
         const request = JSON.parse(event['body']);
 
-       /*  let oldRecipe = undefined;
-        if(lastModifiedDate !== undefined) {
-            oldRecipe = await getRecipe(lastModifiedDate);
-        } else {
-            oldRecipe = await getQueriedRecipe(id);
-        }
-        console.log("old recipe, " + oldRecipe);
-        if(oldRecipe == null || oldRecipe == undefined) {
-            throw "recipe not found!";
-        } */
         const username = await getUsername(event['headers']['Authorization']);
 
         await postComment(id, request['comment'], username, dateToString());
-
-        //const results = await patchRecipe(request, oldRecipe, username, dateToString());
-
+        posted = true;
         //console.log('results, ' +  JSON.stringify(results));
 
         callback(null, setResponse(200/* , JSON.stringify(results) */));
+
+        //#region PublishSNS
+
+        const recipe = await getQueriedRecipe(id);
+        const recipeCreator = await getUserFromDB(recipe.uploader);
+        if(recipeCreator.commentPush !== undefined && recipeCreator.commentPush === true) {
+            await invokePublishLambda({
+                "message": "click to view the comment",
+                "title": username + " commented on your recipe",
+                "target": recipeCreator.endpoint,
+                "id": recipe.id,
+                "channel": "comment"
+            });
+        }
+
+        //#endregion PublishSNS
     }
     catch(err) {
         //callback(err);
         //callback(null, setResponse(500, err));
-        callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
+        console.log("comment posted ? " + posted + " catch error, " + err);
+        if(!posted)
+            callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
     }
 
 };

@@ -7,16 +7,18 @@ const sns = new AWS.SNS({
     apiVersion: '2010-03-31'
 });
 
-//const preTopicArn = process.env['TOPIC_ARN_PREFIX'];
+//https://engineering.upside.com/rolling-your-own-mobile-push-with-node-and-sns-23b167c7e06
 
-const buildFCMPayloadString = (event) => {
+const buildFCMPayloadString = (eventData) => {
+
     return JSON.stringify({
-        data: { //notification
+        data: eventData
+        /* data: { //notification
             message: event.message,
             title: event.title,
             channel: event.channel,
             id: event.id
-        }
+        } */
     });
 };
 
@@ -25,10 +27,14 @@ exports.handler = (event) => {
     console.log("Received event:", eventText);
     const platform = "android";
     let payloadKey = '', payload = '';
+    const eventData = {...event};
+    delete eventData.topic;
+    delete eventData.target;
+    delete eventData.subject;
 
     if (platform === 'android') {
         payloadKey = 'GCM';
-        payload = buildFCMPayloadString(event);
+        payload = buildFCMPayloadString(eventData);
 
     }
     let snsMessage = {};
@@ -39,8 +45,13 @@ exports.handler = (event) => {
         MessageStructure: "json",
         //Subject: event.subject,
         MessageAttributes: event.messageAttributes,
-        TopicArn: process.env['TOPIC_ARN_PREFIX'] + event.topic
+        //TopicArn: process.env['TOPIC_ARN_PREFIX'] + event.topic
     };
+    if(event.target !== undefined) {
+        params['TargetArn'] = event.target;
+    } else {
+        params['TopicArn'] = process.env['TOPIC_ARN_PREFIX'] + event.topic;
+    }
     console.log(JSON.stringify(snsMessage, null, 2));
     sns.publish(params, (err, data) => {
         if(err) {
@@ -51,11 +62,4 @@ exports.handler = (event) => {
             return data;
         }
     });
-};
-
-const MessageAttributes = {
-    "id": {
-        DataType: "Number",
-        StringValue: recipe.id
-    }
 };
