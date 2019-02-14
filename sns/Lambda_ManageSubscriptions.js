@@ -245,7 +245,7 @@ exports.handler = async (event, context, callback) => {
                     }
                     break;
                 default:
-                    throw "Specify what to do with new recipe subscription!"
+                    throw "Specify what to do with new recipe subscription!";
             }
         }
         
@@ -258,7 +258,7 @@ exports.handler = async (event, context, callback) => {
                     deviceAttributes.subscriptions.comments = false;
                     break;
                 default:
-                    throw "Specify what to do with comments subscription!"
+                    throw "Specify what to do with comments subscription!";
             }
         }
 
@@ -267,6 +267,7 @@ exports.handler = async (event, context, callback) => {
 
         //#endregion Subscriptions
 
+        callback(null);
 
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));
