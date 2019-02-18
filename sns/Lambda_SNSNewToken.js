@@ -209,23 +209,23 @@ exports.handler = async (event, context, callback) => {
         if(user.devices === undefined) {
             user.devices = {};
         }
-        if(user.devices.deviceId === undefined) {
-            user.devices.deviceId = {
+        if(user.devices[deviceId] === undefined) {
+            user.devices[deviceId] = {
                 platform: platform,
                 token: token,
                 endpoint: await createEndpoint(token, username, platform)
             };
 
             // subscribe to default subscriptions
-            user.devices.deviceId.subscriptions = {
-                newRecipe: await subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices.deviceId.endpoint, platform),
+            user.devices[deviceId].subscriptions = {
+                newRecipe: await subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices[deviceId].endpoint, platform),
                 comments: true
             };
         }
         // change token for existing endpoint
         else {
             await updateEndpointToken(token, user.devices.deviceId.endpoint);
-            user.devices.deviceId.token = token;
+            user.devices[deviceId].token = token;
         }
 
         if(!user.confirmed)
@@ -233,7 +233,9 @@ exports.handler = async (event, context, callback) => {
         // save the user record in db
         await putUser(user);
 
-        callback(null);
+        callback(null, {
+            statusCode: 200
+        });
 
     } catch(err) {
         console.log(JSON.stringify(err));

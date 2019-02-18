@@ -203,7 +203,8 @@ exports.handler = async (event, context, callback) => {
         if(event['queryStringParameters'] != undefined) {
             if(event['queryStringParameters'][queryStringParameters.recipeSubscription] != undefined) {
                 recipeFlag = event['queryStringParameters'][queryStringParameters.recipeSubscription];
-                recipePolicy = JSON.parse(request[queryStringParameters.recipeSubscription]);
+                if(request[queryStringParameters.recipeSubscription] !== undefined)
+                    recipePolicy = JSON.parse(request[queryStringParameters.recipeSubscription]);
             }
             if(event['queryStringParameters'][queryStringParameters.commentSubscription] != undefined) {
                 commentFlag = event['queryStringParameters'][queryStringParameters.commentSubscription];
@@ -215,10 +216,10 @@ exports.handler = async (event, context, callback) => {
 
         const user = await getUserFromDB(username);
  
-        if(user.devices === undefined || user.devices.deviceId === undefined) {
+        if(user.devices === undefined || user.devices[deviceId] === undefined) {
             throw "Device not registered!";
         }
-        const deviceAttributes = user.devices.deviceId;
+        const deviceAttributes = user.devices[deviceId];
 
         //#region Subscriptions
 
@@ -262,12 +263,14 @@ exports.handler = async (event, context, callback) => {
             }
         }
 
-        user.devices.deviceId = deviceAttributes;
+        user.devices[deviceId] = deviceAttributes;
         await putUser(user);
 
         //#endregion Subscriptions
 
-        callback(null);
+        callback(null, {
+            statusCode: 200
+        });
 
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));
