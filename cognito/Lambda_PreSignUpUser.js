@@ -26,11 +26,14 @@ function createUser(user_name, user_email) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Item: {
+            hash: process.env['APP_NAME'], //Recipes
             username: user_name,
             confirmed: false,
             email: user_email,
-            creationDate: date
+            creationDate: date,
+            favorites: {}
         },
+        ConditionExpression: "attribute_not_exists(confirmed)",
         ReturnValues: "NONE"
     };
 

@@ -152,12 +152,16 @@ function postComment(recipeId, comment, username, date) {
     });
 }
 
+//#region SNS Methods
+
 function getUserFromDB(name) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
+            "hash": process.env['APP_NAME'], //Recipes
             "username" : name
-        }
+        },
+        ProjectionExpression: "username, devices"
     };
 
     return new Promise((resolve, reject) => {
@@ -198,6 +202,29 @@ function invokePublishLambda(payload) {
     });
 }
 
+async function handlePushNotifications(id, someUser) {
+    const recipe = await getQueriedRecipe(id);
+    const recipeUploader = await getUserFromDB(recipe.uploader);
+    if(recipeUploader.devices !== undefined) {
+        for(let deviceId in recipeUploader.devices) {
+            const subscriptions = recipeUploader.devices[deviceId].subscriptions;
+            if(subscriptions !== undefined && 
+                subscriptions.comments !== undefined &&
+                subscriptions.comments === true) {
+                    await invokePublishLambda({
+                        "message": "click to view the comment",
+                        "title": someUser + " commented on your recipe",
+                        "target": recipeUploader.devices[deviceId].endpoint,
+                        "id": recipe.id,
+                        "channel": "comments"
+                    });
+            }
+        }
+    }
+}
+
+//#endregion SNS Methods
+
 
 exports.handler = async function(event, context, callback) {
     let id = undefined;//, lastModifiedDate = undefined;
@@ -226,18 +253,8 @@ exports.handler = async function(event, context, callback) {
         callback(null, setResponse(200/* , JSON.stringify(results) */));
 
         //#region PublishSNS
-
-        const recipe = await getQueriedRecipe(id);
-        const recipeCreator = await getUserFromDB(recipe.uploader);
-        if(recipeCreator.commentPush !== undefined && recipeCreator.commentPush === true) {
-            await invokePublishLambda({
-                "message": "click to view the comment",
-                "title": username + " commented on your recipe",
-                "target": recipeCreator.endpoint,
-                "id": recipe.id,
-                "channel": "comment"
-            });
-        }
+        
+        await handlePushNotifications(id, username);
 
         //#endregion PublishSNS
     }

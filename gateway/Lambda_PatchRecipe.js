@@ -3,6 +3,10 @@ const AWS = require('aws-sdk');
 AWS.config.update({region: process.env['REGION']});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
+const lambda = new AWS.Lambda({
+    region: AWS.config.region,
+    apiVersion: '2015-03-31'
+});
 
 const freePatch = ["likes"];
 //const freePatchGetUserName = ["comments"];
@@ -66,6 +70,8 @@ function getUsername(token){
         });
     });
 }
+
+//#region PATCH recipe Methods
 
 function getRecipe(sortKey) {
     const get_params = {
@@ -203,9 +209,117 @@ async function patchRecipe(request, oldRecipe, username, date) {
             }
         });
     });
-
 }
 
+//#endregion PATCH recipe Methods
+
+//#region SNS Methods
+
+function getUserFromDB(name, withFavorites) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Key: {
+            "hash": process.env['APP_NAME'], //Recipes
+            "username" : name
+        },
+        ProjectionExpression: "username, devices"
+    };
+
+    if(withFavorites)
+        params.ProjectionExpression = "username, devices, favorites";
+
+    return new Promise((resolve, reject) => {
+        docClient.get(params, (err, data) => {
+            if (err) {
+                console.error("Couldn't get the user. Error JSON:", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                // print all the data
+                console.log("Get succeeded. ", JSON.stringify(data));
+                if(data.Item === undefined)
+                    reject("user not found, " + name);
+                resolve(data.Item);
+            }
+        });
+    });
+}
+
+
+function invokePublishLambda(payload) {
+    const params = {
+        FunctionName: process.env['SNS_PUBLISH_LAMBDA'],
+        InvocationType: 'Event',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+    };
+
+    return new Promise((resolve, reject) => {
+        lambda.invoke(params, (err,data) => {
+            if (err) { 
+                console.log(err, err.stack);
+                reject(err);
+            }
+            else {
+                console.log(data);
+                resolve(data);
+            }
+        });
+    });
+}
+
+async function handlePushNotifications(recipe, someUser) {
+    //const recipe = await getQueriedRecipe(id);
+    const recipeUploader = await getUserFromDB(recipe.uploader, false);
+    if(recipeUploader.devices !== undefined) {
+        for(let deviceId in recipeUploader.devices) {
+            const subscriptions = recipeUploader.devices[deviceId].subscriptions;
+            if(subscriptions !== undefined && 
+                subscriptions.likes !== undefined &&
+                subscriptions.likes === true) {
+                    await invokePublishLambda({
+                        "message": recipe.name,
+                        "title": someUser + " likes your recipe",
+                        "target": recipeUploader.devices[deviceId].endpoint,
+                        "id": recipe.id,
+                        "channel": "likes"
+                    });
+            }
+        }
+    }
+}
+
+//#endregion SNS Methods
+
+//#region Update User Details
+
+function updateUserFavorites(username, favorites) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Key: {
+            hash: process.env['APP_NAME'], //Recipes
+            username: username
+        },
+        UpdateExpression: "SET favorites = :favoritesValue",
+        ExpressionAttributeValues: {
+            ":favoritesValue": favorites
+        },
+        ReturnValues: "None"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.update(params, (err, data) => {
+            if(err) {
+                console.log("Error user UPDATE", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                console.log("Success user UPDATE", JSON.stringify(data));
+                resolve(data.Attributes);
+            }
+        });
+    });
+}
+
+//#endregion Update User Details
 
 exports.handler = async function(event, context, callback) {
     let id = undefined, lastModifiedDate = undefined, requiredAuth = false;
@@ -255,15 +369,14 @@ exports.handler = async function(event, context, callback) {
         if(oldRecipe == null || oldRecipe == undefined) {
             throw "recipe not found!";
         }
-        let username = 'john doe';
+        //let username = 'john doe';
+        const username = await getUsername(event['headers']['Authorization']);//[0]['AccessToken']);
 
         if(requiredAuth) {
-            username = await getUsername(event['headers']['Authorization']);//[0]['AccessToken']);
             //authorization check. only the uploader can change some attributes
             //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
-            const uploader = oldRecipe.uploader;
 
-            if(username !== uploader) {
+            if(username !== oldRecipe.uploader) {
                 throw "not authorized to change requested attributes!";
             }
         }
@@ -276,6 +389,22 @@ exports.handler = async function(event, context, callback) {
         console.log('results, ' +  JSON.stringify(results));
 
         callback(null, setResponse(200, JSON.stringify(await getRecipe(date))));
+
+        if(request['likes'] === 'like' || request['likes'] === 'unlike') {
+            // update user favorites record
+            let currentUser = await getUserFromDB(username, true);
+            if(currentUser.favorites ===undefined || request['likes'] === 'like')
+                currentUser.favorites[oldRecipe.id] = oldRecipe.name;
+            else
+                delete currentUser.favorites[oldRecipe.id];
+            await updateUserFavorites(username, currentUser.favorites);
+
+
+            if(request['likes'] === 'like') {
+                //send push notification to the uploader
+                await handlePushNotifications(oldRecipe, username);
+            }
+        }
     }
     catch(err) {
         //callback(err);

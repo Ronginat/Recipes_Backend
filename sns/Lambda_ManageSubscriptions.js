@@ -23,7 +23,8 @@ const subscription = {
 
 /* const subscriptions = {
     recipe: "newRecipe",
-    comment: "comments"
+    comment: "comments",
+    like: "likes"
 }; */
 
 const model = {
@@ -35,11 +36,13 @@ const model = {
             token: "token",
             endpoint: "endpointArn",
             subscriptions: {
-                newRecipe: "subscriptionArn",
+                newRecipes: "subscriptionArn",
                 comments: true || false,
+                likes: true || false,
             }
         }
     },
+    favorites: {}
 };
 
 const pathParameters = {
@@ -47,8 +50,9 @@ const pathParameters = {
 };
 
 const queryStringParameters = {
-    recipeSubscription: "newRecipe",
-    commentSubscription: "comments"
+    recipeSubscription: "newRecipes",
+    commentSubscription: "comments",
+    likeSubscription: "likes"
 };
 
 function getUsername(token){
@@ -73,8 +77,10 @@ function getUserFromDB(name) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
+            hash: process.env['APP_NAME'], //Recipes
             username : name
-        }
+        },
+        ProjectionExpression: "username, devices, confirmed"
     };
 
     return new Promise((resolve, reject) => {
@@ -93,7 +99,34 @@ function getUserFromDB(name) {
     });
 }
 
-function putUser(user) {
+function updateUser(user) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Key: {
+            hash: process.env['APP_NAME'], //Recipes
+            username: user.username
+        },
+        UpdateExpression: "SET devices = :devicesValue",
+        ExpressionAttributeValues: {
+            ":devicesValue": user.devices
+        },
+        ReturnValues: "ALL_OLD"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.update(params, (err, data) => {
+            if(err) {
+                console.log("Error user UPDATE", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                console.log("Success user UPDATE", JSON.stringify(data));
+                resolve(data.Attributes);
+            }
+        });
+    });
+}
+
+/* function putUser(user) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Item: user,
@@ -111,7 +144,7 @@ function putUser(user) {
             }
         });
     });
-}
+} */
 
 function subscribeToTopic(topic, endpoint, filterPolicy, platform) {
     const params = {
@@ -193,7 +226,7 @@ exports.handler = async (event, context, callback) => {
     try {
         const request = JSON.parse(event['body']);
         let deviceId = undefined;
-        let recipeFlag = undefined, commentFlag = undefined, recipePolicy = undefined;
+        let recipeFlag = undefined, commentFlag = undefined, likeFlag = undefined, recipePolicy = undefined;
 
         if(event['pathParameters'] != undefined && event['pathParameters'][pathParameters.device]) {
             deviceId = event['pathParameters'][pathParameters.device];
@@ -209,6 +242,9 @@ exports.handler = async (event, context, callback) => {
             if(event['queryStringParameters'][queryStringParameters.commentSubscription] != undefined) {
                 commentFlag = event['queryStringParameters'][queryStringParameters.commentSubscription];
             }
+            if(event['queryStringParameters'][queryStringParameters.likeSubscription] != undefined) {
+                likeFlag = event['queryStringParameters'][queryStringParameters.likeSubscription];
+            }
         }
         else
             throw "No subscription provided";
@@ -223,26 +259,26 @@ exports.handler = async (event, context, callback) => {
 
         //#region Subscriptions
 
-        // flag meaning that the client wants
+        // flag meaning that the client wants to change the relevant subscription
         if(recipeFlag !== undefined) {
             switch(recipeFlag) {
                 case subscription.subscribe:
-                    if(deviceAttributes.subscriptions.newRecipe === undefined) {
-                        deviceAttributes.subscriptions.newRecipe = 
+                    if(deviceAttributes.subscriptions.newRecipes === undefined) {
+                        deviceAttributes.subscriptions.newRecipes = 
                             await subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], deviceAttributes.endpoint, recipePolicy, deviceAttributes.platform);
                     }
                     break;
                 case subscription.unsubscribe:
-                    if(deviceAttributes.subscriptions.newRecipe !== undefined) {
-                        await unsubscribeToTopic(deviceAttributes.subscriptions.newRecipe);
-                        deviceAttributes.subscriptions.newRecipe = undefined;
+                    if(deviceAttributes.subscriptions.newRecipes !== undefined) {
+                        await unsubscribeToTopic(deviceAttributes.subscriptions.newRecipes);
+                        deviceAttributes.subscriptions.newRecipes = undefined;
                     }
                     break;
 
                 case subscription.changePolicy:
-                    if(deviceAttributes.subscriptions.newRecipe !== undefined
+                    if(deviceAttributes.subscriptions.newRecipes !== undefined
                             && recipePolicy !== undefined) {
-                        await setSubscriptionAttributes(deviceAttributes.subscriptions.newRecipe, recipePolicy);
+                        await setSubscriptionAttributes(deviceAttributes.subscriptions.newRecipes, recipePolicy);
                     }
                     break;
                 default:
@@ -263,8 +299,21 @@ exports.handler = async (event, context, callback) => {
             }
         }
 
+        if(likeFlag) {
+            switch(commentFlag) {
+                case subscription.subscribe:
+                    deviceAttributes.subscriptions.likes = true;
+                    break;
+                case subscription.unsubscribe:
+                    deviceAttributes.subscriptions.likes = false;
+                    break;
+                default:
+                    throw "Specify what to do with likes subscription!";
+            }
+        }
+
         user.devices[deviceId] = deviceAttributes;
-        await putUser(user);
+        await updateUser(user);
 
         //#endregion Subscriptions
 

@@ -188,6 +188,7 @@ exports.handler = async function(event, context) {
             "title": removedPend.name + ", by " + removedPend.uploader,
             "topic": process.env['NEW_RECIPE_TOPIC'],
             "id": removedPend.id,
+            "channel": "newRecipes",
             "messageAttributes": {
                 "categories" : {
                     "DataType": "String.Array",

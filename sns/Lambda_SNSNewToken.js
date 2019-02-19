@@ -31,6 +31,7 @@ const model = {
             subscriptions: {
                 newRecipe: "subscriptionArn",
                 comments: true || false,
+                likes: true || false
             }
         }
     },
@@ -65,8 +66,10 @@ function getUserFromDB(name) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
+            hash: process.env['APP_NAME'], //Recipes
             username : name
-        }
+        },
+        ProjectionExpression: "username, devices, confirmed"
     };
 
     return new Promise((resolve, reject) => {
@@ -85,7 +88,35 @@ function getUserFromDB(name) {
     });
 }
 
-function putUser(user) {
+function updateUser(user) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Key: {
+            hash: process.env['APP_NAME'], //Recipes
+            username: user.username
+        },
+        UpdateExpression: "SET devices = :devicesValue confirmed = :confirmedValue",
+        ExpressionAttributeValues: {
+            ":devicesValue": user.devices,
+            ":confirmedValue": user.confirmed
+        },
+        ReturnValues: "ALL_OLD"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.update(params, (err, data) => {
+            if(err) {
+                console.log("Error user UPDATE", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                console.log("Success user UPDATE", JSON.stringify(data));
+                resolve(data.Attributes);
+            }
+        });
+    });
+}
+
+/* function putUser(user) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Item: user,
@@ -103,7 +134,7 @@ function putUser(user) {
             }
         });
     });
-}
+} */
 
 function subscribeToTopic(topic, endpoint, platform) {
     const params = {
@@ -218,8 +249,9 @@ exports.handler = async (event, context, callback) => {
 
             // subscribe to default subscriptions
             user.devices[deviceId].subscriptions = {
-                newRecipe: await subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices[deviceId].endpoint, platform),
-                comments: true
+                newRecipes: await subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices[deviceId].endpoint, platform),
+                comments: true,
+                likes: false
             };
         }
         // change token for existing endpoint
@@ -231,7 +263,7 @@ exports.handler = async (event, context, callback) => {
         if(!user.confirmed)
             user.confirmed = true;
         // save the user record in db
-        await putUser(user);
+        await updateUser(user);
 
         callback(null, {
             statusCode: 200
