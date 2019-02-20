@@ -130,7 +130,7 @@ exports.handler = async function(event, context, callback) {
 
         //if (Object.keys(pend.UnprocessedItems).length === 0)
 
-        results['Item'] = recipeItem;
+        results['id'] = recipeItem.id;
         results['url'] = url;
         
         callback(null, setResponse(200, JSON.stringify(results)));        

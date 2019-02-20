@@ -73,6 +73,7 @@ function getUsername(token){
     });
 }
 
+// get specific attributes from db - username(string), devices(map), confirmed(string)
 function getUserFromDB(name) {
     const params = {
         TableName: process.env['USERS_TABLE'],
@@ -99,6 +100,7 @@ function getUserFromDB(name) {
     });
 }
 
+// update(using SET) only devices(map) attribute in db
 function updateUser(user) {
     const params = {
         TableName: process.env['USERS_TABLE'],
@@ -228,11 +230,13 @@ exports.handler = async (event, context, callback) => {
         let deviceId = undefined;
         let recipeFlag = undefined, commentFlag = undefined, likeFlag = undefined, recipePolicy = undefined;
 
+        //Retreive Path Parameter
         if(event['pathParameters'] != undefined && event['pathParameters'][pathParameters.device]) {
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
             throw "request must contain deviceId";
         }
+        //Retreive Query Parameters
         if(event['queryStringParameters'] != undefined) {
             if(event['queryStringParameters'][queryStringParameters.recipeSubscription] != undefined) {
                 recipeFlag = event['queryStringParameters'][queryStringParameters.recipeSubscription];
@@ -248,18 +252,20 @@ exports.handler = async (event, context, callback) => {
         }
         else
             throw "No subscription provided";
-        const username = await getUsername(event['headers']['Authorization']);       
+        //Retreive user record from db
+        const username = await getUsername(event['headers']['Authorization']);      
 
         const user = await getUserFromDB(username);
  
         if(user.devices === undefined || user.devices[deviceId] === undefined) {
             throw "Device not registered!";
         }
+        //Shortcut reference to current device object
         const deviceAttributes = user.devices[deviceId];
 
         //#region Subscriptions
 
-        // flag meaning that the client wants to change the relevant subscription
+        // each flag means that the client wants to change the relevant subscription
         if(recipeFlag !== undefined) {
             switch(recipeFlag) {
                 case subscription.subscribe:
@@ -274,7 +280,7 @@ exports.handler = async (event, context, callback) => {
                         deviceAttributes.subscriptions.newRecipes = undefined;
                     }
                     break;
-
+                //currently not supported by the client
                 case subscription.changePolicy:
                     if(deviceAttributes.subscriptions.newRecipes !== undefined
                             && recipePolicy !== undefined) {
@@ -300,7 +306,7 @@ exports.handler = async (event, context, callback) => {
         }
 
         if(likeFlag) {
-            switch(commentFlag) {
+            switch(likeFlag) {
                 case subscription.subscribe:
                     deviceAttributes.subscriptions.likes = true;
                     break;
@@ -311,7 +317,7 @@ exports.handler = async (event, context, callback) => {
                     throw "Specify what to do with likes subscription!";
             }
         }
-
+        // update user object in memory and then update it in db
         user.devices[deviceId] = deviceAttributes;
         await updateUser(user);
 

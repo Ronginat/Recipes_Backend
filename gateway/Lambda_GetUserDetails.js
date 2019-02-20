@@ -32,7 +32,7 @@ function getUserFromDB(name) {
         TableName: process.env['USERS_TABLE'],
         Key: {
             hash: process.env['APP_NAME'],
-            username : name
+            username: name
         },
         ProjectionExpression: "username, devices, favorites"
     };
@@ -66,11 +66,11 @@ exports.handler = async (event, context, callback) => {
 
         const user = await getUserFromDB(username);
         const response = {
-            "favorites": user.favorites
+            "favorites": Object.keys(user.favorites)
         };
 
         const devices = user.devices;
-        if(devices !== undefined && devices[deviceId] && undefined) {
+        if(devices !== undefined && devices[deviceId] !== undefined) {
             const subscriptions = devices[deviceId].subscriptions;
             subscriptions.newRecipes = subscriptions.newRecipes !== undefined ? true : false;
             response['subscriptions'] = subscriptions;
@@ -80,6 +80,8 @@ exports.handler = async (event, context, callback) => {
             statusCode: 200,
             body: JSON.stringify(response)
         });
+
+        console.log(JSON.stringify(response));
 
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));
