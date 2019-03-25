@@ -31,7 +31,8 @@ function setErrorResponse(status, err){
 }
 
 function dateToString() {
-    const date = new Date();
+    return new Date().toISOString();
+    /* const date = new Date();
     var day = date.getUTCDate();
     var month = date.getUTCMonth() + 1;
     var year = date.getUTCFullYear();
@@ -44,7 +45,7 @@ function dateToString() {
     return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
             + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
             + ':' + (seconds <= 9 ? '0' + seconds : seconds)
-            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) );
+            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) ); */
 }
 
 function getUsername(token){
