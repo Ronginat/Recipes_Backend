@@ -149,6 +149,7 @@ exports.handler = async function(event, context) {
         };
 
         if (!recipe.hasOwnProperty('foodFiles')) { // if (!('foodFiles' in recipe))
+            updateRecipePayload['thumbnail'] = true;
             const payload = {
                 'bucket': bucket,
                 'filePath': uploadedName,
@@ -160,11 +161,6 @@ exports.handler = async function(event, context) {
             await invokeThumbnailGenerator(payload);
             console.log("finish thumbnail lambda");
         } else {
-            /* const payload = {
-                'id': id,
-                'lastModifiedDate': recipe.lastModifiedDate,
-                'fileName': fileName,
-            }; */
             await invokeFoodProcessedUpdateRecipe(updateRecipePayload);
         }
         

@@ -8,7 +8,7 @@ let params = {
     Limit: process.env['LIMIT'],
     TableName: process.env['TABLE'],
     KeyConditionExpression: "sharedKey = :v_key AND #modified >= :v_time",
-    ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #file, #images, #categories, #likes, #deleted",
+    ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #file, #thumbnail, #images, #categories, #likes, #deleted",
     ExpressionAttributeNames: {
       "#id":  "id",
       "#name": "name",
@@ -17,6 +17,7 @@ let params = {
       "#modified": "lastModifiedDate",
       "#uploader": "uploader",
       "#file": "recipeFile",
+      "#thumbnail": "thumbnail",
       "#images": "foodFiles",
       "#categories": "categories",
       "#likes": "likes",

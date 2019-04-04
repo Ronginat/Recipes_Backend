@@ -32,20 +32,6 @@ function setErrorResponse(status, err){
 
 function dateToString() {
     return new Date().toISOString();
-    /* const date = new Date();
-    var day = date.getUTCDate();
-    var month = date.getUTCMonth() + 1;
-    var year = date.getUTCFullYear();
-
-    const hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    const seconds = date.getUTCSeconds();
-    const millis = date.getUTCMilliseconds();
-
-    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
-            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds)
-            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) ); */
 }
 
 function getUsername(token){
@@ -65,30 +51,6 @@ function getUsername(token){
         });
     });
 }
-
-/* function getRecipe(sortKey) {
-    const get_params = {
-        TableName: process.env['RECIPE_TABLE'],
-        Key: {
-            "sharedKey": process.env['SHARED_KEY'],
-            "lastModifiedDate": sortKey
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        docClient.get(get_params, (err, data) => {
-            if (err) {
-                console.error("Couldn't get the recipe. Error JSON:", JSON.stringify(err, null, 2));
-                return reject(err);
-            } else {
-                // print all the data
-                console.log("Get succeeded. ", JSON.stringify(data));
-                return resolve(data.Item);
-            }
-        });
-    });
-}
- */
 
 function getQueriedRecipe(recipeId) {
     const quey_params = {

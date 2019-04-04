@@ -5,20 +5,6 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 
 function dateToString() {
     return new Date().toISOString();
-    /* const date = new Date();
-    var day = date.getUTCDate();
-    var month = date.getUTCMonth() + 1;
-    var year = date.getUTCFullYear();
-
-    const hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    const seconds = date.getUTCSeconds();
-    const millis = date.getUTCMilliseconds();
-
-    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
-            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds)
-            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) ); */
 }
 
 
@@ -54,7 +40,7 @@ function deleteOldRecipe(partition, sort, id) {
     });
 }
 
-async function patchRecipe(lastModifiedDate, id, fileName) {
+async function patchRecipe(lastModifiedDate, id, fileName, isThumbnail = false) {
     const date = dateToString();
 
     let oldRecipe = await deleteOldRecipe(process.env['SHARED_KEY'], lastModifiedDate, id);
@@ -65,6 +51,8 @@ async function patchRecipe(lastModifiedDate, id, fileName) {
         oldRecipe.foodFiles.push(fileName);
     }
 
+    if(isThumbnail !== false)
+        oldRecipe.thumbnail = fileName;
     oldRecipe.lastModifiedDate = date;
 
     const putRecipeParams = {
@@ -95,7 +83,11 @@ exports.handler = async (event, context) => {
         const id = event.id;
         const fileName = event.fileName;
         const lastModifiedDate = event.lastModifiedDate;
-        const updatedRecipeItem = await patchRecipe(lastModifiedDate, id, fileName);
+        let isThumbnail = false;
+        if (event.thumbnail !== undefined) {
+            isThumbnail = event.thumbnail;
+        }
+        const updatedRecipeItem = await patchRecipe(lastModifiedDate, id, fileName, isThumbnail);
         //let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
         
         console.log("recipe updated successfully.\n" + JSON.stringify(updatedRecipeItem));

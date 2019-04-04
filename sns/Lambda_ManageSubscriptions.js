@@ -128,26 +128,6 @@ function updateUser(user) {
     });
 }
 
-/* function putUser(user) {
-    const params = {
-        TableName: process.env['USERS_TABLE'],
-        Item: user,
-        ReturnValues: "ALL_OLD"
-    };
-
-    return new Promise((resolve, reject) => {
-        docClient.put(params, (err, data) => {
-            if(err) {
-                console.log("Error user PUT, " + JSON.stringify(err));
-                reject(err);
-            } else {
-                console.log("Success user PUT, " + JSON.stringify(data));
-                resolve(data);
-            }
-        });
-    });
-} */
-
 function subscribeToTopic(topic, endpoint, filterPolicy, platform) {
     const params = {
         /* Protocol: "application", */

@@ -12,20 +12,6 @@ const lambda = new AWS.Lambda({
 
 function dateToString() {
     return new Date().toISOString();
-    /* const date = new Date();
-    var day = date.getUTCDate();
-    var month = date.getUTCMonth() + 1;
-    var year = date.getUTCFullYear();
-
-    const hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    const seconds = date.getUTCSeconds();
-    const millis = date.getUTCMilliseconds();
-
-    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
-            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds)
-            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) ); */
 }
 
 function decodeID(name) {
@@ -141,36 +127,6 @@ function invokePublishLambda(payload) {
         });
     });
 }
-
-// function deletePendingImagesFromS3(images) {
-//     let array = [];
-//     let params = {
-//         Bucket: process.env['BUCKET'],
-//         Delete: {
-//             Quiet: false,
-//         },
-//     };
-//     images.forEach(function(element, index, arr) {
-//         array.push({
-//             Key: element
-//         });
-//     });
-//     params.Delete['Objects'] = array;
-
-//     return new Promise((resolve, reject) => {
-//         // Call DynamoDB to add the item to the table
-//         s3.deleteObjects(params, function(err, data) {
-//             if (err) {
-//                 console.log(err, err.stack); // an error occurred
-//                 reject(err);
-//             }
-//             else {
-//                 console.log(data); // successful response
-//                 resolve(data);
-//             }
-//         });
-//     });
-// }
 
 exports.handler = async function(event, context) {
     let record = event['Records'][0]['s3'];

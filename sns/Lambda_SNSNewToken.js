@@ -95,7 +95,7 @@ function updateUser(user) {
             hash: process.env['APP_NAME'], //Recipes
             username: user.username
         },
-        UpdateExpression: "SET devices = :devicesValue confirmed = :confirmedValue",
+        UpdateExpression: "SET devices = :devicesValue, confirmed = :confirmedValue",
         ExpressionAttributeValues: {
             ":devicesValue": user.devices,
             ":confirmedValue": user.confirmed
@@ -115,26 +115,6 @@ function updateUser(user) {
         });
     });
 }
-
-/* function putUser(user) {
-    const params = {
-        TableName: process.env['USERS_TABLE'],
-        Item: user,
-        ReturnValues: "ALL_OLD"
-    };
-
-    return new Promise((resolve, reject) => {
-        docClient.put(params, (err, data) => {
-            if(err) {
-                console.log("Error user PUT, " + JSON.stringify(err));
-                reject(err);
-            } else {
-                console.log("Success user PUT, " + JSON.stringify(data));
-                resolve(data);
-            }
-        });
-    });
-} */
 
 function subscribeToTopic(topic, endpoint, platform) {
     const params = {
@@ -256,7 +236,7 @@ exports.handler = async (event, context, callback) => {
         }
         // change token for existing endpoint
         else {
-            await updateEndpointToken(token, user.devices.deviceId.endpoint);
+            await updateEndpointToken(token, user.devices[deviceId].endpoint);
             user.devices[deviceId].token = token;
         }
 

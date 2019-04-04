@@ -38,20 +38,6 @@ function setErrorResponse(status, err){
 
 function dateToString() {
     return new Date().toISOString();
-    /* const date = new Date();
-    var day = date.getUTCDate();
-    var month = date.getUTCMonth() + 1;
-    var year = date.getUTCFullYear();
-
-    const hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    const seconds = date.getUTCSeconds();
-    const millis = date.getUTCMilliseconds();
-
-    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day)
-            + ' ' + (hours <= 9 ? '0' + hours : hours) + ':' + (minutes <= 9 ? '0' + minutes : minutes)
-            + ':' + (seconds <= 9 ? '0' + seconds : seconds)
-            + '.' + (millis <= 10 ? '00' + millis : ( millis <= 100 ? '0' + millis : millis) ); */
 }
 
 function getUsername(token){
@@ -394,7 +380,7 @@ exports.handler = async function(event, context, callback) {
         if(request['likes'] === 'like' || request['likes'] === 'unlike') {
             // update user favorites record
             let currentUser = await getUserFromDB(username, true);
-            if(currentUser.favorites ===undefined || request['likes'] === 'like')
+            if(currentUser.favorites === undefined || request['likes'] === 'like')
                 currentUser.favorites[oldRecipe.id] = oldRecipe.name;
             else
                 delete currentUser.favorites[oldRecipe.id];
@@ -414,105 +400,3 @@ exports.handler = async function(event, context, callback) {
     }
 
 };
-
-
-
-/* function getUploader(key) {
-    let params = {
-        "TableName": process.env['RECIPE_TABLE'],
-        "Key": {
-            "id": key,
-            "sharedKey": process.env['SHARED_KEY']
-        },
-        "ProjectionExpression": "uploader"
-    };
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        documentClient.get(params, function(err, data) {
-            if (err) {
-                console.log("Error GET", err);
-                return reject(err);
-            } 
-            else {
-                if(data['Item'] == undefined) {
-                    reject("item not found in recipes table");
-                }
-                else {
-                    console.log("Success GET", data);
-                    return resolve(data['Item']['uploader']['S']);
-                }
-            }
-        });
-    });
-} */
-
-/* function updateItemInRecipes(id, attributes) {
-    let expression = generateExpressionAttributes(attributes);
-
-    let params = {
-        TableName: process.env['RECIPE_TABLE'],
-        Key: {
-            'id' : id,
-            'sharedKey': process.env['SHARED_KEY'],
-        },
-        UpdateExpression : expression.Updates,
-        ExpressionAttributeValues : expression.Values,
-        ReturnValues: "ALL_NEW"
-    };
-
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        documentClient.update(params, function(err, data) {
-            if (err) {
-                console.log("Error recipe UPDATE", JSON.stringify(err, null, 2));
-                return reject(err);
-            } 
-            else {
-                console.log("Success recipe UPDATE", JSON.stringify(data));
-                return resolve(data['Attributes']);
-            }
-        });
-    });
-}
-
-function generateExpressionAttributes(recipe, attributes) {
-    //let date = moment.tz("Asia/Jerusalem").format('YYYY-MM-DD HH:mm:ss');
-    let date = dateToString();
-    let Updates = "SET ";
-    let Values = {};
-
-    for(let value in attributes) {
-        switch(value) {
-            case "likes":
-                Updates = Updates.concat("likes = likes + :likeValue, ");
-                if (attributes[value] === 'like')
-                    Values[':likeValue'] = 1;
-                if (attributes[value] === 'unlike')
-                    Values[':likeValue'] = -1;
-                break;
-            case "comments":
-                Updates = Updates.concat("SET comments = list_append(comments, :commValue), ");
-                let comment = attributes[value];
-                comment['date'] = date;
-                Values[':commValue'] = [comment];
-                break;
-            case "description":
-                Updates = Updates.concat("description = :descValue, ");
-                Values[':descValue'] = attributes[value];
-                break;
-            case "categories":
-                Updates = Updates.concat("categories = :catValue, ");
-                Values[':catValue'] = attributes[value];
-                break;
-        }
-    }
-
-    Updates = Updates.concat("lastModifiedDate = :dateValue");
-    Values[':dateValue'] = date;
-
-    return {
-        "Updates": Updates,
-        "Values": Values
-    };
-} */

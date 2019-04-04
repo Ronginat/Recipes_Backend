@@ -4,8 +4,10 @@ const AWS = require('aws-sdk');
 AWS.config.update({region: process.env['REGION']});
 
 // Create DynamoDB service object
-let docClient = new AWS.DynamoDB.DocumentClient();
+const docClient = new AWS.DynamoDB.DocumentClient();
 //let ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
+
+const lastModifiedKey = "lastModifiedDate";
 
 
 function setResponse(status, body){
@@ -23,7 +25,7 @@ function checkTableTime(){
   const params = {
     TableName: process.env['TABLE'],
     Key: {
-      name: "last-modified"
+      name: lastModifiedKey
     }
   };
   return new Promise((resolve, reject) => {    
@@ -78,7 +80,7 @@ function scanTable(){
 function deleteLastModifiedItem(scan) {
   let results = [];
   for(let i=0; i < scan.length; i++) {
-    if(scan[i]['name'] !== 'last-modified')
+    if(scan[i]['name'] !== lastModifiedKey)
       results.push(scan[i]);
   }
   return results;
