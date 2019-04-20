@@ -290,7 +290,7 @@ function updateUserFavorites(username, favorites) {
         ExpressionAttributeValues: {
             ":favoritesValue": favorites
         },
-        ReturnValues: "None"
+        ReturnValues: "NONE"
     };
 
     return new Promise((resolve, reject) => {
@@ -377,7 +377,7 @@ exports.handler = async function(event, context, callback) {
 
         callback(null, setResponse(200, JSON.stringify(await getRecipe(date))));
 
-        if(request['likes'] === 'like' || request['likes'] === 'unlike') {
+        if(request['likes'] !== undefined) {//=== 'like' || request['likes'] === 'unlike') {
             // update user favorites record
             let currentUser = await getUserFromDB(username, true);
             if(currentUser.favorites === undefined || request['likes'] === 'like')
