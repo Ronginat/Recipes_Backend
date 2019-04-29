@@ -15,9 +15,6 @@ function dateToString() {
 }
 
 function decodeID(name) {
-    /* const dot = name.lastIndexOf(".");
-    let temp = name.substring(0, dot);
-    return temp.split("---")[1]; */
     return name.split("/")[1].split("--recipe--")[0];
 }
 
@@ -86,7 +83,7 @@ function removeFromPending(key) {
 }
 
 function deleteFromS3(bucket, key) {
-    let params = {
+    const params = {
         Bucket: bucket, 
         Key: key
     };
@@ -106,7 +103,20 @@ function deleteFromS3(bucket, key) {
     });
 }
 
-function invokePublishLambda(payload) {
+function invokePublishLambda(recipe) {
+    const payload = {
+        "message": "click to view the recipe",
+        "title": recipe.name + ", by " + recipe.uploader,
+        "topic": process.env['NEW_RECIPE_TOPIC'],
+        "id": recipe.id,
+        "channel": "newRecipes",
+        "messageAttributes": {
+            "categories" : {
+                "DataType": "String.Array",
+                "StringValue": JSON.stringify(recipe.categories)
+            }
+        }
+    };
     const params = {
         FunctionName: process.env['SNS_PUBLISH_LAMBDA'],
         InvocationType: 'Event',
@@ -128,34 +138,61 @@ function invokePublishLambda(payload) {
     });
 }
 
-exports.handler = async function(event, context) {
-    let record = event['Records'][0]['s3'];
-    let uploadedName = record['object']['key'];
-    let bucket = record['bucket']['name'];
+//#region Update User Details
+
+function updateUserPostedRecipes(username, recipeId) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Key: {
+            hash: process.env['APP_NAME'], //Recipes
+            username: username
+        },
+        ConditionExpression: "attribute_exists(posted)",
+        UpdateExpression: "SET posted = list_append(posted, :postValue)",
+        ExpressionAttributeValues: {
+            ":postValue": [recipeId]
+        },
+        ReturnValues: "NONE"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.update(params, (err, data) => {
+            if(err) {
+                console.log("Error user UPDATE", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                console.log("Success user UPDATE", JSON.stringify(data));
+                resolve(data.Attributes);
+            }
+        });
+    });
+}
+
+//#endregion Update User Details
+
+exports.handler = async function(event, context, callback) {
+    const record = event['Records'][0]['s3'];
+    const uploadedName = record['object']['key'];
+    const bucket = record['bucket']['name'];
 
     let posted = false;
 
     const id = decodeID(uploadedName);
     try {
-        let removedPend = await removeFromPending(id);
-        let postedRecipeItem = await putItemInRecipes(removedPend);
-        postsed = true;
-        await invokePublishLambda({
-            "message": "click to view the recipe",
-            "title": removedPend.name + ", by " + removedPend.uploader,
-            "topic": process.env['NEW_RECIPE_TOPIC'],
-            "id": removedPend.id,
-            "channel": "newRecipes",
-            "messageAttributes": {
-                "categories" : {
-                    "DataType": "String.Array",
-                    "StringValue": JSON.stringify(removedPend.categories)
-                }
-            }
-        });
-        //let removedImages = await deletePendingImagesFromS3(removedPend['pendImages']);
+        const removedPend = await removeFromPending(id);
+        const postedRecipeItem = await putItemInRecipes(removedPend);
+        posted = true;
+        
+        await Promise.all([
+            invokePublishLambda(removedPend),
+            updateUserPostedRecipes(removedPend.uploader, removedPend.id)
+        ]);
+
+        //await invokePublishLambda(removedPend);
+        //await updateUserPostedRecipes(removedPend.uploader, removedPend.id);
         
         console.log("recipe upload successfully.\n" + JSON.stringify(postedRecipeItem));
+        callback(null);
 
     } catch(err) {
         console.log("error when uploading recipe.\n" + err);

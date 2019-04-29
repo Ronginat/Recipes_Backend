@@ -73,6 +73,7 @@ exports.handler = async (event, context, callback) => {
         if(devices !== undefined && devices[deviceId] !== undefined) {
             const subscriptions = devices[deviceId].subscriptions;
             subscriptions.newRecipes = subscriptions.newRecipes !== undefined ? true : false;
+            subscriptions.appUpdates = subscriptions.appUpdates !== undefined ? true : false;
             response['subscriptions'] = subscriptions;
         }
 

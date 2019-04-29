@@ -216,7 +216,7 @@ exports.handler = async (event, context, callback) => {
 
         // the client is in onNewToken()
         
-        //first create a devices map attribute if undefined
+        // first create a devices map attribute if undefined
         if(user.devices === undefined) {
             user.devices = {};
         }
@@ -227,11 +227,18 @@ exports.handler = async (event, context, callback) => {
                 endpoint: await createEndpoint(token, username, platform)
             };
 
-            // subscribe to default subscriptions
+            const [newRecipesSubscriber, appUpdatesSubsriber] = await Promise.all([
+                subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices[deviceId].endpoint, platform),
+                subscribeToTopic(process.env['APP_UPDATES_TOPIC_ARN'], user.devices[deviceId].endpoint, platform)
+            ]);
+
+            // subscribe to default subscriptions - topics and comments
             user.devices[deviceId].subscriptions = {
-                newRecipes: await subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices[deviceId].endpoint, platform),
+                //newRecipes: await subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices[deviceId].endpoint, platform),
+                newRecipes: newRecipesSubscriber,
                 comments: true,
-                likes: false
+                likes: false,
+                appUpdates: appUpdatesSubsriber
             };
         }
         // change token for existing endpoint

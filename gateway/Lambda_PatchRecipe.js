@@ -10,8 +10,8 @@ const lambda = new AWS.Lambda({
 
 const freePatch = ["likes"];
 //const freePatchGetUserName = ["comments"];
-const authPatch = ["description", "categories"];
-const forbidPatch = ["id", "name", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedDate"];
+const authPatch = ["name", "description", "categories"];
+const forbidPatch = ["id", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedDate"];
 
 
 function setResponse(status, body){
@@ -41,9 +41,9 @@ function dateToString() {
 }
 
 function getUsername(token){
-    let params = {
+    const params = {
         AccessToken: token
-      };
+    };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
@@ -163,12 +163,17 @@ async function patchRecipe(request, oldRecipe, username, date) {
                 if (request[value] === 'unlike')
                 oldRecipe.likes -= 1;
                 break;
+            case "name":
             case "description":
+            case "categories":
+                oldRecipe[value] = request[value];
+                break;
+            /* case "description":
                 oldRecipe.description = request[value];
                 break;
             case "categories":
                 oldRecipe.categories = request[value];
-                break;
+                break; */
         }
     }
 
@@ -255,7 +260,6 @@ function invokePublishLambda(payload) {
 }
 
 async function handlePushNotifications(recipe, someUser) {
-    //const recipe = await getQueriedRecipe(id);
     const recipeUploader = await getUserFromDB(recipe.uploader, false);
     if(recipeUploader.devices !== undefined) {
         for(let deviceId in recipeUploader.devices) {
@@ -363,7 +367,7 @@ exports.handler = async function(event, context, callback) {
             //authorization check. only the uploader can change some attributes
             //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
 
-            if(username !== oldRecipe.uploader) {
+            if(username !== oldRecipe.uploader || username !== 'admin' || username !== 'admin2') {
                 throw "not authorized to change requested attributes!";
             }
         }

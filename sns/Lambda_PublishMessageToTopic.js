@@ -31,6 +31,7 @@ exports.handler = (event) => {
     delete eventData.topic;
     delete eventData.target;
     delete eventData.subject;
+    delete eventData.messageAttributes;
 
     if (platform === 'android') {
         payloadKey = 'GCM';

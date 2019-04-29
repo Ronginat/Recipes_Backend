@@ -102,14 +102,14 @@ exports.handler = async function(event, context, callback) {
         let results = {};
                            //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         eventBody['recipe']['uploader'] = await getUsername(event['headers']['Authorization']);
-        console.log('username: ' + eventBody['recipe']['uploader']);
+        console.log('username: ' + eventBody.recipe.uploader);
         const newId = nanoid(12);
         console.log('generated id = ' + newId);
         eventBody['recipe']['id'] = newId;
 
-        let htmlName = generateContentName(eventBody['recipe']);
+        let htmlName = generateContentName(eventBody.recipe);
         console.log('generated html file name: ' + htmlName);
-        let recipeItem = await putRecipeInPendings(eventBody['recipe'], htmlName);  
+        let recipeItem = await putRecipeInPendings(eventBody.recipe, htmlName);  
         //console.log('recipe item in db: \n' + JSON.stringify(recipeItem));
   
         const url = signUrl(htmlName);
@@ -120,7 +120,8 @@ exports.handler = async function(event, context, callback) {
         results['id'] = recipeItem.id;
         results['url'] = url;
         
-        callback(null, setResponse(200, JSON.stringify(results)));        
+        callback(null, setResponse(200, JSON.stringify(results)));
+        
     } catch(err) {
         console.log('got error, ' + err)
         callback(null, setResponse(400, err));
