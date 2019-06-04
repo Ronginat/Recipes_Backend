@@ -13,7 +13,8 @@ function createUser(user_name, user_email) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Item: {
-            hash: process.env['APP_NAME'], //Recipes
+            //hash: process.env['APP_NAME'], //Recipes
+            id: user_name,
             username: user_name,
             confirmed: false,
             email: user_email,

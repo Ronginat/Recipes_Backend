@@ -44,7 +44,7 @@ const pathParameters = {
 };
 
 
-function getUsername(token){
+function getUser(token){
     let params = {
         AccessToken: token
       };
@@ -56,18 +56,20 @@ function getUsername(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.Username);
+                return resolve({
+                    "username": data.Username,
+                    "sub": data.UserAttributes.find(attr => attr.Name === 'sub').Value
+                });
             }    
         });
     });
 }
 
-function getUserFromDB(name) {
+function getUserFromDB(userId) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            hash: process.env['APP_NAME'], //Recipes
-            username : name
+            id : userId
         },
         ProjectionExpression: "username, devices, confirmed"
     };
@@ -80,12 +82,63 @@ function getUserFromDB(name) {
             } else {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
-                if(data.Item === undefined)
-                    reject("user not found, " + name);
+                /* if(data.Item === undefined)
+                    reject("user not found, " + name); */
                 resolve(data.Item);
             }
         });
     });
+}
+
+function deleteUserFromDB(user) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Key: {
+            id : user
+        },
+        ReturnValues: "ALL_OLD"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.delete(params, (err, data) => {
+            if (err) {
+                console.error("Couldn't get the user. Error JSON:", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                // print all the data
+                console.log("Delete succeeded. ", JSON.stringify(data));
+                resolve(data.Attributes);
+            }
+        });
+    }); 
+}
+
+function writeUserInDB(user) {
+    const params = {
+        TableName: process.env['USERS_TABLE'],
+        Item: user,
+        ReturnValues: "ALL_NEW"
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.put(params, (err, data) => {
+            if (err) {
+                console.error("Couldn't get the user. Error JSON:", JSON.stringify(err, null, 2));
+                reject(err);
+            } else {
+                // print all the data
+                console.log("Delete succeeded. ", JSON.stringify(data));
+                resolve(data.Attributes);
+            }
+        });
+    }); 
+}
+
+async function replaceNameWithId(userId, username) {
+    const deletedUser = await deleteUserFromDB(username);
+    deletedUser.id = userId;
+    const newUser = await writeUserInDB(deletedUser);
+    return newUser;
 }
 
 function updateUser(user) {
@@ -211,8 +264,12 @@ exports.handler = async (event, context, callback) => {
             platform = event['queryStringParameters']['platform'];
         }
 
-        const username = await getUsername(event['headers']['Authorization']);
-        const user = await getUserFromDB(username);
+        const { username, sub } = await getUser(event['headers']['Authorization']);
+        let user = await getUserFromDB(sub);
+        if (user === undefined) {
+            // first token registration, replace record key username with sub id
+            user = await replaceNameWithId(sub, username);
+        }
 
         // the client is in onNewToken()
         
