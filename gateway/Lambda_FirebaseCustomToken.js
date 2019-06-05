@@ -11,20 +11,18 @@ admin.initializeApp({
 });
 
 function setResponse(status, body){
-    let response = {
+    return {
         headers: {
             'Content-Type': 'application/json'},
         body: body,
         statusCode: status
     };
-      
-    return response;
 }
 
-function getUsername(token) {
-    let params = {
+function getUser(token) {
+    const params = {
         AccessToken: token
-      };
+    };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
@@ -33,21 +31,25 @@ function getUsername(token) {
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.Username);
+                return resolve(data.UserAttributes.find(attr => attr.Name === 'sub').Value);
             }    
         });
     });
 }
 
-function createCustomToken(name) {
-    return admin.auth().createCustomToken(name);
+/**
+ * Generates firebase token using firebase-admin sdk
+ * @param {string} userId - user identifier from cognito (sub attribute)
+ */
+function createCustomToken(userId) {
+    return admin.auth().createCustomToken(userId);
 }
 
-exports.handler = async function(event, context, callback) {
+exports.handler = async (event, context, callback) => {
     try {
-        const username = await getUsername(event['headers']['Authorization']);//[0]['AccessToken']);
+        const userId = await getUser(event['headers']['Authorization']);//[0]['AccessToken']);
 
-        const newToken = await createCustomToken(username);
+        const newToken = await createCustomToken(userId);
     
         console.log('results, ' +  JSON.stringify(newToken));
 

@@ -5,14 +5,12 @@ const documentClient = new AWS.DynamoDB.DocumentClient();
 
 
 function setResponse(status, body){
-    let response = {
+    return {
         headers: {
             'Content-Type': 'application/json'},
         body: body,
         statusCode: status
     };
-      
-    return response;
 }
 
 function getRecipeComments(key) {
@@ -46,11 +44,11 @@ function getRecipeComments(key) {
 }
 
 
-exports.handler = async function(request, context, callback) {
+exports.handler = async (request, context, callback) => {
     console.log(request);
 
     try {
-        if(request['pathParameters'] != undefined && request['pathParameters']['id'] != undefined) {
+        if(request['pathParameters'] !== undefined && request['pathParameters']['id'] !== undefined) {
             const id = request['pathParameters']['id'];
             
             //let item = await getRecipe(id);
@@ -59,10 +57,18 @@ exports.handler = async function(request, context, callback) {
             console.log("response: " + JSON.stringify(comments));
             callback(null, setResponse(200, JSON.stringify(comments)));
         } 
-            else throw "must send recipe id!";
+            else throw {
+                code: 400, // Bad Request
+                message: "request must contain recipe id"
+            };
     }
     catch(err) {
-        callback(null, setResponse(500, err));
+        const { code, message } = err;
+        if (message !== undefined && code !== undefined) {
+            callback(null, setResponse(code, JSON.stringify({"message": message})));
+        } else {
+            callback(null, setResponse(500, JSON.stringify({"message": err})));
+            //callback(null, setResponse(500, err));
+        }
     }
-
 };

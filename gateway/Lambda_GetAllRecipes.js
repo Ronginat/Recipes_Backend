@@ -4,11 +4,11 @@ AWS.config.update({region: process.env['REGION']});
 
 const docClient = new AWS.DynamoDB.DocumentClient();
 
-let params = {
+const params = {
     Limit: process.env['LIMIT'],
     TableName: process.env['TABLE'],
     KeyConditionExpression: "sharedKey = :v_key AND #modified >= :v_time",
-    ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #file, #thumbnail, #images, #categories, #likes, #deleted",
+    ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #thumbnail, #images, #categories, #likes, #deleted",
     ExpressionAttributeNames: {
       "#id":  "id",
       "#name": "name",
@@ -16,7 +16,6 @@ let params = {
       "#created": "creationDate",
       "#modified": "lastModifiedDate",
       "#uploader": "uploader",
-      "#file": "recipeFile",
       "#thumbnail": "thumbnail",
       "#images": "foodFiles",
       "#categories": "categories",
@@ -66,26 +65,29 @@ async function getAll(date, ExclusiveStartKey, userLimit) {
     } while(typeof LastEvaluatedKey != "undefined" && listData.length < absoluteLimit);
 
     console.log("Scan Success, item count = ", listData.length + ", last key = " + JSON.stringify(LastEvaluatedKey));
-    return [LastEvaluatedKey, listData];
+    return {
+        "LastEvaluatedKey": LastEvaluatedKey, 
+        "listData": listData
+    };
 }
 
 
 // handleHttpRequest is the entry point for Lambda requests
-exports.handler = async function(request, context, callback) {
+exports.handler = async (request, context, callback) => {
     console.log('received event');
     
     let date = "0", startKey = undefined, userLimit = process.env['LIMIT'];
     /*if(request['pathParameters'] != undefined && request['pathParameters']['bydate'] != undefined) {
         date = request['pathParameters']['bydate'];
     }
-    else */if(request['queryStringParameters'] != undefined && request['queryStringParameters']['lastModified'] != undefined) {
+    else */if(request['queryStringParameters'] !== undefined && request['queryStringParameters']['lastModified'] !== undefined) {
         date = request['queryStringParameters']['lastModified'];
     }
-    if(request['queryStringParameters'] != undefined && request['queryStringParameters']['Last-Evaluated-Key'] != undefined) {
+    if(request['queryStringParameters'] !== undefined && request['queryStringParameters']['Last-Evaluated-Key'] !== undefined) {
         startKey = request['queryStringParameters']['Last-Evaluated-Key'];
         startKey = JSON.parse(startKey);
     }
-    if(request['queryStringParameters'] != undefined && request['queryStringParameters']['limit'] != undefined) {
+    if(request['queryStringParameters'] !== undefined && request['queryStringParameters']['limit'] !== undefined) {
         userLimit = request['queryStringParameters']['limit'];
     }
     
@@ -93,7 +95,7 @@ exports.handler = async function(request, context, callback) {
     console.log('requested limit: '+ userLimit);
     console.log('requested start key: '+ startKey);
 
-    let response = {
+    const response = {
       headers: {
           'Content-Type': 'application/json',
           'Last-Evaluated-Key': '',
@@ -104,8 +106,8 @@ exports.handler = async function(request, context, callback) {
     
     try {
         //let items = undefined;
-        let [LastEvaluatedKey, items] = await getAll(date, startKey, userLimit);
-        if (startKey != undefined && (items === undefined || items.length == 0)) {
+        const { LastEvaluatedKey, items } = await getAll(date, startKey, userLimit);
+        if (startKey !== undefined && (items === undefined || items.length == 0)) {
             response.statusCode = 304;
         }
         if (LastEvaluatedKey != undefined) {
@@ -118,9 +120,8 @@ exports.handler = async function(request, context, callback) {
 
     } catch(err) {
         console.error("caught exception, " + err);
-        response.body = JSON.stringify(err);
+        response.body = JSON.stringify({"message": err});
         response.statusCode = 500;
         callback(null, response);
     }
-    
 };

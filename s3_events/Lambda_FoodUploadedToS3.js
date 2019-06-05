@@ -29,7 +29,7 @@ function getQueriedRecipe(recipeId) {
                 // print all the data
                 console.log("Query succeeded. ", JSON.stringify(data));
                 if (data.Items.length > 1) {
-                    console.log('Oh no! there are more recipes with ' + recipeId + ' id');
+                    console.log('Oh no! there are more than one recipe with ' + recipeId + ' id', 'taking the first one, ' + data.Items[0].name);
                 }
                 if(data.Count === 0 || data.Items.length === 0) {
                     return reject("recipe not found");
@@ -59,7 +59,6 @@ function deleteFromS3(bucket, key) {
             }
         });
     });
-    
 }
 
 function invokeFoodProcessedUpdateRecipe(payload) {
@@ -131,10 +130,10 @@ function decodeFileName(name) {
 }
 
 
-exports.handler = async function(event, context) {
-    let record = event['Records'][0]['s3'];
-    let uploadedName = record['object']['key'];
-    let bucket = record['bucket']['name'];
+exports.handler = async (event) => {
+    const record = event['Records'][0]['s3'];
+    const uploadedName = record['object']['key'];
+    const bucket = record['bucket']['name'];
 
     console.log(record);
     try {
@@ -150,7 +149,7 @@ exports.handler = async function(event, context) {
 
         if (!recipe.hasOwnProperty('foodFiles')) { // if (!('foodFiles' in recipe))
             updateRecipePayload['thumbnail'] = true;
-            const payload = {
+            const thumbnailGeneratorPayload = {
                 'bucket': bucket,
                 'filePath': uploadedName,
                 'fileName': fileName,
@@ -158,7 +157,7 @@ exports.handler = async function(event, context) {
                 'invokeOnComplete': process.env['UPDATE_RECIPE_LAMBDA'],
                 'invokeOnComletePayload': updateRecipePayload
             };
-            await invokeThumbnailGenerator(payload);
+            await invokeThumbnailGenerator(thumbnailGeneratorPayload);
             console.log("finish thumbnail lambda");
         } else {
             await invokeFoodProcessedUpdateRecipe(updateRecipePayload);

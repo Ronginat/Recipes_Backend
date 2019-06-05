@@ -43,11 +43,19 @@ const pathParameters = {
     token: "token"
 };
 
+function setResponse(status, body){
+    return {
+        headers: {
+            'Content-Type': 'application/json'},
+        body: body,
+        statusCode: status
+    };
+}
 
 function getUser(token){
-    let params = {
+    const params = {
         AccessToken: token
-      };
+    };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
@@ -71,7 +79,10 @@ function getUserFromDB(userId) {
         Key: {
             id : userId
         },
-        ProjectionExpression: "username, devices, confirmed"
+        ProjectionExpression: "#id, username, devices, confirmed",
+        ExpressionAttributeNames: {
+            "#id": "id"
+        }
     };
 
     return new Promise((resolve, reject) => {
@@ -82,19 +93,17 @@ function getUserFromDB(userId) {
             } else {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
-                /* if(data.Item === undefined)
-                    reject("user not found, " + name); */
                 resolve(data.Item);
             }
         });
     });
 }
 
-function deleteUserFromDB(user) {
+function deleteUserFromDB(userId) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            id : user
+            id : userId
         },
         ReturnValues: "ALL_OLD"
     };
@@ -145,8 +154,8 @@ function updateUser(user) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            hash: process.env['APP_NAME'], //Recipes
-            username: user.username
+            //hash: process.env['APP_NAME'], //Recipes
+            id: user.id
         },
         UpdateExpression: "SET devices = :devicesValue, confirmed = :confirmedValue",
         ExpressionAttributeValues: {
@@ -180,7 +189,10 @@ function subscribeToTopic(topic, endpoint, platform) {
             params["Protocol"] = "application";
             break;
         default:
-            throw "can't subscribe with platform " + platform;
+            throw {
+                code: 400, // Bad Request
+                message: "can't subscribe with platform " + platform
+            };
     }
 
     return new Promise((resolve, reject) => {
@@ -208,7 +220,10 @@ function createEndpoint(token, username, platform) {
             params['PlatformApplicationArn'] = process.env['ANDROID_APPLICATION_ARN'];
             break;
         default:
-            throw "platform " + platform + " is not supported!";
+            throw {
+                code: 400, // Bad Request
+                message: "platform " + platform + " is not supported!"
+            };
     }
 
     return new Promise((resolve, reject) => {
@@ -253,14 +268,17 @@ exports.handler = async (event, context, callback) => {
     try {
         let token = undefined, deviceId = undefined, platform = platforms.android;
 
-        if(event['pathParameters'][pathParameters.token] != undefined && event['pathParameters'][pathParameters.device]) {
+        if(event['pathParameters'][pathParameters.token] !== undefined && event['pathParameters'][pathParameters.device]) {
             token = event['pathParameters'][pathParameters.token];
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
-            throw "request must contain deviceId and token";
+            throw {
+                code: 400, // Bad Request
+                message: "request must contain deviceId and token"
+            };
         }
 
-        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['platform'] != undefined) {
+        if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['platform'] !== undefined) {
             platform = event['queryStringParameters']['platform'];
         }
 
@@ -284,7 +302,7 @@ exports.handler = async (event, context, callback) => {
                 endpoint: await createEndpoint(token, username, platform)
             };
 
-            const [newRecipesSubscriber, appUpdatesSubsriber] = await Promise.all([
+            const [newRecipesSubscriber, appUpdatesSubscriber] = await Promise.all([
                 subscribeToTopic(process.env['NEW_RECIPE_TOPIC_ARN'], user.devices[deviceId].endpoint, platform),
                 subscribeToTopic(process.env['APP_UPDATES_TOPIC_ARN'], user.devices[deviceId].endpoint, platform)
             ]);
@@ -295,7 +313,7 @@ exports.handler = async (event, context, callback) => {
                 newRecipes: newRecipesSubscriber,
                 comments: true,
                 likes: false,
-                appUpdates: appUpdatesSubsriber
+                appUpdates: appUpdatesSubscriber
             };
         }
         // change token for existing endpoint
@@ -315,6 +333,12 @@ exports.handler = async (event, context, callback) => {
 
     } catch(err) {
         console.log(JSON.stringify(err));
-        callback(err);
+        //callback(err);
+        const { code, message } = err;
+        if (message !== undefined && code !== undefined) {
+            callback(null, setResponse(code, JSON.stringify({"message": message})));
+        } else {
+            callback(null, setResponse(500, JSON.stringify({"message": err})));
+        }
     }    
 };

@@ -8,33 +8,28 @@ const lambda = new AWS.Lambda({
     apiVersion: '2015-03-31'
 });
 
-function setResponse(status/* , body */){
-    let response = {
+function setResponse(status){
+    return {
         headers: {
             'Content-Type': 'application/json'},
-        /* body: body, */
         statusCode: status
     };
-      
-    return response;
 }
 
 function setErrorResponse(status, err){
-    let response = {
+    return {
         headers: {
             'Content-Type': 'application/json'},
         body: err,
         statusCode: status
     };
-      
-    return response;
 }
 
 function dateToString() {
     return new Date().toISOString();
 }
 
-function getUsername(token){
+function getUser(token){
     let params = {
         AccessToken: token
       };
@@ -46,7 +41,10 @@ function getUsername(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.Username);
+                return resolve({
+                    "username": data.Username,
+                    "sub": data.UserAttributes.find(attr => attr.Name === 'sub').Value
+                });
             }    
         });
     });
@@ -117,12 +115,11 @@ function postComment(recipeId, comment, username, date) {
 
 //#region SNS Methods
 
-function getUserFromDB(name) {
+function getUserFromDB(userId) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            "hash": process.env['APP_NAME'], //Recipes
-            "username" : name
+            "id" : userId
         },
         ProjectionExpression: "username, devices"
     };
@@ -136,7 +133,7 @@ function getUserFromDB(name) {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
-                    reject("user not found, " + name);
+                    return reject("user not found, " + userId);
                 resolve(data.Item);
             }
         });
@@ -189,31 +186,28 @@ async function handlePushNotifications(id, someUser) {
 //#endregion SNS Methods
 
 
-exports.handler = async function(event, context, callback) {
-    let id = undefined;//, lastModifiedDate = undefined;
-    let posted = false;
-
+exports.handler = async (event, context, callback) => {
+    let id = undefined, posted = false;
     //console.log(event['body']);
 
     try {
-        if(event['pathParameters'] != undefined && event['pathParameters']['id'] != undefined) {
+        if(event['pathParameters'] !== undefined && event['pathParameters']['id'] !== undefined) {
             id = event['pathParameters']['id'];
         } else {
-            throw "request must contain recipe id";
+            throw {
+                code: 400, // Bad Request
+                message: "request must contain recipe id"
+            };
         }
-        /* if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModifiedDate'] != undefined) {
-            lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
-        } */
-    
+
         const request = JSON.parse(event['body']);
+        const { username, sub } = await getUser(event['headers']['Authorization']);
 
-        const username = await getUsername(event['headers']['Authorization']);
-
-        await postComment(id, request['comment'], username, dateToString());
+        await postComment(id, request['comment'], sub, dateToString());
         posted = true;
         //console.log('results, ' +  JSON.stringify(results));
 
-        callback(null, setResponse(200/* , JSON.stringify(results) */));
+        callback(null, setResponse(200));
 
         //#region PublishSNS
         
@@ -225,8 +219,14 @@ exports.handler = async function(event, context, callback) {
         //callback(err);
         //callback(null, setResponse(500, err));
         console.log("comment posted ? " + posted + " catch error, " + err);
-        if(!posted)
-            callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
+        if(!posted) {
+            const { code, message } = err;
+            if (message !== undefined && code !== undefined) {
+                callback(null, setErrorResponse(code, JSON.stringify({"message": message})));
+            } else {
+                callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
+            }   
+        }
     }
 
 };

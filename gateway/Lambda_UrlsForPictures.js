@@ -5,14 +5,12 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 
 function setResponse(status, body){
-    let response = {
+    return {
         headers: {
             'Content-Type': 'application/json'},
         body: body,
         statusCode: status
     };
-      
-    return response;
 }
 
 function getRecipe(sortKey) {
@@ -32,9 +30,6 @@ function getRecipe(sortKey) {
             } else {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
-                if(data.Item === undefined)
-                    return resolve(null);
-                    //return reject("recipe not found");
                 return resolve(data.Item);
             }
         });
@@ -69,7 +64,10 @@ function getQueriedRecipe(recipeId) {
                     console.log('Oh no! there are more recipes with ' + recipeId + ' id');
                 }
                 if(data.Count === 0 || data.Items.length === 0) {
-                    return reject("recipe not found");
+                    return reject({
+                        code: 404, // Not Found
+                        message: "recipe not found"
+                    });
                 }
                 return resolve(data.Items[0]);
             }
@@ -101,7 +99,7 @@ function signUrls(fileNames) {
     const signedUrlExpireSeconds = 60 * 5; //5 minutes
     let i = 0;
 
-    let params = {
+    const params = {
         Bucket: myBucket,
         'Key': fileNames[i],
         Expires: signedUrlExpireSeconds
@@ -116,23 +114,23 @@ function signUrls(fileNames) {
     return urls;
 }
 
-exports.handler = async function(event, context, callback) {
+exports.handler = async (event, context, callback) => {
     console.log(event);
     const eventBody = JSON.parse(event['body']);
 
     try {
         let id = undefined, lastModifiedDate = undefined;
-        /* if(event['queryStringParameters'] != undefined && event['queryStringParameters']['id'] != undefined) {
-            id = event['queryStringParameters']['id'];
-        } */
-        if(event['pathParameters'] != undefined && event['pathParameters']['id'] != undefined) {
+
+        if(event['pathParameters'] !== undefined && event['pathParameters']['id'] !== undefined) {
             id = event['pathParameters']['id'];
-            console.log('id = ' + id);
         }
         else {
-            throw "request must contain recipe id";
+            throw {
+                code: 400, // Bad Request
+                message: "request must contain recipe id"
+            };
         }
-        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModifiedDate'] != undefined) {
+        if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['lastModifiedDate'] !== undefined) {
             lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         }
 
@@ -143,11 +141,11 @@ exports.handler = async function(event, context, callback) {
             if(lastModifiedDate !== undefined) {
                 recipeItem = await getRecipe(lastModifiedDate);
             } 
-            if(lastModifiedDate === undefined || recipeItem === undefined || recipeItem === null) {
+            if(recipeItem === undefined) {
                 recipeItem = await getQueriedRecipe(id);
             }
 
-            if(recipeItem !== undefined && recipeItem !== null) {
+            if(recipeItem !== undefined) {
                 console.log('generating names');
                 let fileNames = generateFileNames(numOfFiles, recipeItem, eventBody['extension']);
                 console.log("files\n" + fileNames);
@@ -158,12 +156,21 @@ exports.handler = async function(event, context, callback) {
                 callback(null, setResponse(200, JSON.stringify(urls)));
             } 
             else
-                callback(null, setResponse(400, "recipe not found"));
+                throw {
+                    code: 404,
+                    message: "recipe not found!"
+                };
         }
         //if (Object.keys(pend.UnprocessedItems).length === 0)
         
     } catch(err) {
         console.log(err);
-        callback(null, setResponse(500, err));
+        //callback(null, setResponse(500, err));
+        const { code, message } = err;
+        if (message !== undefined && code !== undefined) {
+            callback(null, setResponse(code, JSON.stringify({"message": message})));
+        } else {
+            callback(null, setResponse(500, JSON.stringify({"message": err})));
+        }
     }
 };

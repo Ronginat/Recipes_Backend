@@ -1,0 +1,23 @@
+{
+  "name": "recipes_v1",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ronginat/Recipes_Backend.git"
+  },
+  "author": "ron",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Ronginat/Recipes_Backend/issues"
+  },
+  "homepage": "https://github.com/Ronginat/Recipes_Backend#readme",
+  "dependencies": {
+    "aws-sdk": "^2.468.0",
+    "firebase-admin": "^8.0.0"
+  }
+}

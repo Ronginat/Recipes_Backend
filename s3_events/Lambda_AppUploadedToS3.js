@@ -39,7 +39,7 @@ function invokePublishLambda(version) {
     });
 }
 
-exports.handler = async function(event, context, callback) {
+exports.handler = async (event, context, callback) => {
     const record = event['Records'][0]['s3'];
     const uploadedName = record['object']['key'];
     //const bucket = record['bucket']['name'];

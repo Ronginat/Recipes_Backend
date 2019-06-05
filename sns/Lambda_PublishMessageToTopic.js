@@ -7,6 +7,10 @@ const sns = new AWS.SNS({
     apiVersion: '2010-03-31'
 });
 
+/**
+ * Lambda for publish sns messages to users
+ */
+
 //https://engineering.upside.com/rolling-your-own-mobile-push-with-node-and-sns-23b167c7e06
 
 const buildFCMPayloadString = (eventData) => {

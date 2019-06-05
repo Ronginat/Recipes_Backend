@@ -9,10 +9,10 @@ const pathParameters = {
     device: "device"
 };
 
-function getUsername(token){
-    let params = {
+function getUserId(token){
+    const params = {
         AccessToken: token
-      };
+    };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
@@ -21,18 +21,17 @@ function getUsername(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.Username);
+                return resolve(data.UserAttributes.find(attr => attr.Name === 'sub').Value);
             }    
         });
     });
 }
 
-function getUserFromDB(name) {
+function getUserFromDB(userId) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            hash: process.env['APP_NAME'],
-            username: name
+            id: userId
         },
         ProjectionExpression: "username, devices, favorites"
     };
@@ -56,15 +55,15 @@ exports.handler = async (event, context, callback) => {
 
     try {
         let deviceId = undefined;
-        if(event['pathParameters'] != undefined && event['pathParameters'][pathParameters.device]) {
+        if(event['pathParameters'] !== undefined && event['pathParameters'][pathParameters.device]) {
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
             throw "request must contain deviceId";
         }
 
-        const username = await getUsername(event['headers']['Authorization']);       
+        const userId = await getUserId(event['headers']['Authorization']);       
 
-        const user = await getUserFromDB(username);
+        const user = await getUserFromDB(userId);
         const response = {
             "favorites": Object.keys(user.favorites)
         };
@@ -86,6 +85,12 @@ exports.handler = async (event, context, callback) => {
 
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));
-        callback(err);
+        //callback(err);
+        callback(null, { 
+            statusCode: 500, 
+            body: JSON.stringify({
+                "message": err
+            })
+        });
     }
 };

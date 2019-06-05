@@ -7,6 +7,11 @@ const admin = require('firebase-admin');
 
 const serviceAccount = require('serviceAccount.json');
 
+/**
+ * Triggered when image uploaded to /thumbnails in bucket.
+ * Upload the new file to firebase storage using firebase-admin sdk.
+ */
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   storageBucket: process.env['FIREBASE_BUCKET_URL']
@@ -19,7 +24,10 @@ function download(key, bucket) {
             Key: key
           }, (err, data) => {
               if (err) reject(err);
-              else resolve(data.Body);
+              else resolve({
+                  s3_object: data.Body,
+                  contentType: data.ContentType
+              });
           });
     }); 
 }
@@ -31,7 +39,7 @@ function uploadToFirebase(name, buffer, type) {
     });
 }
 
-exports.handler = async function(event, context, callback) {
+exports.handler = async (event, context, callback) => {
     console.log(JSON.stringify(event));
     const record = event['Records'][0];
 
@@ -40,16 +48,8 @@ exports.handler = async function(event, context, callback) {
             const uploadedName = record['s3']['object']['key'];
             const bucket = record['s3']['bucket']['name'];
 
-            
-            const splittedName = uploadedName.split(".");
-            let extension = splittedName[splittedName.length - 1];
-            if (extension === 'jpg') {
-                extension = 'jpeg'
-            } 
-            const contentType = 'image/' + extension;
-            
-            const s3_response = await download(uploadedName, bucket);
-            const result = await uploadToFirebase(uploadedName, s3_response, contentType);
+            const { s3_object, contentType } = await download(uploadedName, bucket);
+            const result = await uploadToFirebase(uploadedName, s3_object, contentType);
             console.log('success upload to firebsae, file = ' + uploadedName + ', result = ' + result);
             callback(null);
         } catch (err) {

@@ -12,12 +12,21 @@ function setResponse(status, body){
     };
 }
 
-function getRecipe(sortKey) {
+/**
+ * 
+ * @param {string} sortKey - lastModified
+ * @returns {Promise<string>} content of the recipe
+ */
+function getRecipeContent(sortKey) {
     const get_params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
             "sharedKey": process.env['SHARED_KEY'],
             "lastModifiedDate": sortKey
+        },
+        ProjectionExpression: "#html",
+        ExpressionAttributeNames: {
+            "#html":  "html"
         }
     };
 
@@ -29,25 +38,30 @@ function getRecipe(sortKey) {
             } else {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
-                return resolve(data.Item);
+                if (data.Item === undefined) {
+                    return resolve(data.Item)
+                }
+                return resolve(data.Item.html);
             }
         });
     });
 }
 
-function getQueriedRecipe(recipeId) {
+function getQueriedRecipeContent(recipeId) {
     const get_params = {
         /*Limit: 2,*/
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "sharedKey = :v_key",
         FilterExpression: "#id = :v_id",
+        ProjectionExpression: "#html",
         ExpressionAttributeNames: {
           "#id":  "id",
+          "#html":  "html"
         },
         ExpressionAttributeValues: {
             ":v_key": process.env['SHARED_KEY'],
             ":v_id": recipeId
-        },
+        }
         /*ReturnConsumedCapacity: "TOTAL"*/
     };
 
@@ -68,14 +82,14 @@ function getQueriedRecipe(recipeId) {
                         message: "recipe not found"
                     });
                 }
-                return resolve(data.Items[0]);
+                return resolve(data.Items[0].html);
             }
         });
     });
 }
 
 
-exports.handler = async (event, context, callback) => {
+exports.handler = async function(event, context, callback) {
     let id = undefined, lastModifiedDate = undefined;
     //console.log(event['body']);
 
@@ -92,18 +106,17 @@ exports.handler = async (event, context, callback) => {
             lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         }
         
-        let recipe = undefined;
+        let content = undefined;
         if (lastModifiedDate !== undefined) {
-            // get by sort key
-            recipe = await getRecipe(lastModifiedDate);
+            content = await getRecipeContent(lastModifiedDate);
         } 
-        if (recipe === undefined) {
-            // getRecipe didn't find the recipe by sort key
-            // query table by id
-            recipe = await getQueriedRecipe(id);
+        if (content === undefined) {
+            content = await getQueriedRecipeContent(id);
         }
-        
-        callback(null, setResponse(200 , JSON.stringify(recipe)));
+
+        // recipe without html content will return null object
+        // return the html content represented as string
+        callback(null, setResponse(200 , content));
     }
     catch(err) {
         //callback(err);
@@ -115,5 +128,4 @@ exports.handler = async (event, context, callback) => {
             callback(null, setResponse(500, JSON.stringify({"message": err})));
         }
     }
-
 };

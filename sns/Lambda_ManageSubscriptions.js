@@ -55,33 +55,40 @@ const queryStringParameters = {
     likeSubscription: "likes"
 };
 
-function getUsername(token){
-    let params = {
+function getUserId(token){
+    const params = {
         AccessToken: token
-      };
+    };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
                 console.log(err); // an error occurred
-                return reject(err);
+                reject(err);
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.Username);
+                resolve(data.UserAttributes.find(attr => attr.Name === 'sub').Value);
             }    
         });
     });
 }
 
-// get specific attributes from db - username(string), devices(map), confirmed(string)
-function getUserFromDB(name) {
+/**
+ * get specific attributes from db:
+ * id(string), username(string), devices(map), confirmed(string)
+ * @param {string} userId - Id of the user in user table
+ */
+function getUserFromDB(userId) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            hash: process.env['APP_NAME'], //Recipes
-            username : name
+            //hash: process.env['APP_NAME'], //Recipes
+            id : userId
         },
-        ProjectionExpression: "username, devices, confirmed"
+        ProjectionExpression: "#id, username, devices, confirmed",
+        ExpressionAttributeNames: {
+            "#id": "id"
+        }
     };
 
     return new Promise((resolve, reject) => {
@@ -93,7 +100,10 @@ function getUserFromDB(name) {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
-                    reject("user not found, " + name);
+                    return reject({
+                        code: 404, // Not Found
+                        message: "user not found! " + userId
+                    });    
                 resolve(data.Item);
             }
         });
@@ -105,8 +115,8 @@ function updateUser(user) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            hash: process.env['APP_NAME'], //Recipes
-            username: user.username
+            //hash: process.env['APP_NAME'], //Recipes
+            id: user.id
         },
         UpdateExpression: "SET devices = :devicesValue",
         ExpressionAttributeValues: {
@@ -211,34 +221,43 @@ exports.handler = async (event, context, callback) => {
         let recipeFlag = undefined, commentFlag = undefined, likeFlag = undefined, recipePolicy = undefined;
 
         //Retreive Path Parameter
-        if(event['pathParameters'] != undefined && event['pathParameters'][pathParameters.device]) {
+        if(event['pathParameters'] !== undefined && event['pathParameters'][pathParameters.device]) {
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
-            throw "request must contain deviceId";
+            throw {
+                code: 400, // Bad Request
+                message: "request must contain deviceId"
+            };
         }
         //Retreive Query Parameters
-        if(event['queryStringParameters'] != undefined) {
-            if(event['queryStringParameters'][queryStringParameters.recipeSubscription] != undefined) {
+        if(event['queryStringParameters'] !== undefined) {
+            if(event['queryStringParameters'][queryStringParameters.recipeSubscription] !== undefined) {
                 recipeFlag = event['queryStringParameters'][queryStringParameters.recipeSubscription];
                 if(request[queryStringParameters.recipeSubscription] !== undefined)
                     recipePolicy = JSON.parse(request[queryStringParameters.recipeSubscription]);
             }
-            if(event['queryStringParameters'][queryStringParameters.commentSubscription] != undefined) {
+            if(event['queryStringParameters'][queryStringParameters.commentSubscription] !== undefined) {
                 commentFlag = event['queryStringParameters'][queryStringParameters.commentSubscription];
             }
-            if(event['queryStringParameters'][queryStringParameters.likeSubscription] != undefined) {
+            if(event['queryStringParameters'][queryStringParameters.likeSubscription] !== undefined) {
                 likeFlag = event['queryStringParameters'][queryStringParameters.likeSubscription];
             }
         }
         else
-            throw "No subscription provided";
+            throw {
+                code: 400, // Bad Request
+                message: "No subscription provided"
+            };
         //Retreive user record from db
-        const username = await getUsername(event['headers']['Authorization']);      
+        const userId = await getUserId(event['headers']['Authorization']);      
 
-        const user = await getUserFromDB(username);
+        const user = await getUserFromDB(userId);
  
         if(user.devices === undefined || user.devices[deviceId] === undefined) {
-            throw "Device not registered!";
+            throw {
+                code: 500, // Internal Server Error
+                message: "Device not registered!"
+            };
         }
         //Shortcut reference to current device object
         const deviceAttributes = user.devices[deviceId];
@@ -268,7 +287,10 @@ exports.handler = async (event, context, callback) => {
                     }
                     break;
                 default:
-                    throw "Specify what to do with new recipe subscription!";
+                    throw {
+                        code: 400, // Bad Request
+                        message: "Specify what to do with new recipe subscription!"
+                    };
             }
         }
         
@@ -281,7 +303,10 @@ exports.handler = async (event, context, callback) => {
                     deviceAttributes.subscriptions.comments = false;
                     break;
                 default:
-                    throw "Specify what to do with comments subscription!";
+                    throw {
+                        code: 400, // Bad Request
+                        message: "Specify what to do with comments subscription!"
+                    };
             }
         }
 
@@ -294,7 +319,10 @@ exports.handler = async (event, context, callback) => {
                     deviceAttributes.subscriptions.likes = false;
                     break;
                 default:
-                    throw "Specify what to do with likes subscription!";
+                    throw {
+                        code: 400, // Bad Request
+                        message: "Specify what to do with likes subscription!"
+                    };
             }
         }
         // update user object in memory and then update it in db
@@ -309,6 +337,23 @@ exports.handler = async (event, context, callback) => {
 
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));
-        callback(err);
+        //callback(err);
+
+        const { code, message } = err;
+        if (message !== undefined && code !== undefined) {
+            callback(null, { 
+                statusCode: code, 
+                body: JSON.stringify({
+                    "message": message
+                })
+            });
+        } else {
+            callback(null, { 
+                statusCode: 500, 
+                body: JSON.stringify({
+                    "message": err
+                })
+            });
+        }
     }
 };

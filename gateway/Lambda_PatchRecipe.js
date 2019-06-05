@@ -10,37 +10,24 @@ const lambda = new AWS.Lambda({
 
 const freePatch = ["likes"];
 //const freePatchGetUserName = ["comments"];
-const authPatch = ["name", "description", "categories"];
+const authPatch = ["name", "description", "categories", "html"];
 const forbidPatch = ["id", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedDate"];
 
 
 function setResponse(status, body){
-    let response = {
+    return {
         headers: {
             'Content-Type': 'application/json'},
         body: body,
         statusCode: status
     };
-      
-    return response;
-}
-
-function setErrorResponse(status, err){
-    let response = {
-        headers: {
-            'Content-Type': 'application/json'},
-        body: err,
-        statusCode: status
-    };
-      
-    return response;
 }
 
 function dateToString() {
     return new Date().toISOString();
 }
 
-function getUsername(token){
+function getUser(token){
     const params = {
         AccessToken: token
     };
@@ -52,7 +39,10 @@ function getUsername(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.Username);
+                return resolve({
+                    "username": data.Username,
+                    "sub": data.UserAttributes.find(attr => attr.Name === 'sub').Value
+                });
             }    
         });
     });
@@ -76,10 +66,7 @@ function getRecipe(sortKey) {
                 return reject(err);
             } else {
                 // print all the data
-                console.log("Get succeeded. ", JSON.stringify(data));
-                if(data.Item === undefined)
-                    return resolve(null);
-                    //return reject("recipe not found");
+                console.log("Get succeeded. ", JSON.stringify(data));               
                 return resolve(data.Item);
             }
         });
@@ -114,7 +101,10 @@ function getQueriedRecipe(recipeId) {
                     console.log('Oh no! there are more recipes with ' + recipeId + ' id');
                 }
                 if(data.Count === 0 || data.Items.length === 0) {
-                    return reject("recipe not found");
+                    return reject({
+                        code: 404, // Not Found
+                        message: "recipe not found!"
+                    });
                 }
                 return resolve(data.Items[0]);
             }
@@ -207,12 +197,11 @@ async function patchRecipe(request, oldRecipe, username, date) {
 
 //#region SNS Methods
 
-function getUserFromDB(name, withFavorites) {
+function getUserFromDB(userId, withFavorites) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            "hash": process.env['APP_NAME'], //Recipes
-            "username" : name
+            id : userId
         },
         ProjectionExpression: "username, devices"
     };
@@ -229,7 +218,10 @@ function getUserFromDB(name, withFavorites) {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
-                    reject("user not found, " + name);
+                    return reject({
+                        code: 404, // Not Found
+                        message: "user not found, " + userId
+                    });
                 resolve(data.Item);
             }
         });
@@ -259,6 +251,11 @@ function invokePublishLambda(payload) {
     });
 }
 
+/**
+ * Trigger notification publisher lambda to notify recipe's uploader about like from any user
+ * @param {any} recipe - Recipe that some user did like on
+ * @param {string} someUser - Name of user who likes a recipe
+ */
 async function handlePushNotifications(recipe, someUser) {
     const recipeUploader = await getUserFromDB(recipe.uploader, false);
     if(recipeUploader.devices !== undefined) {
@@ -283,12 +280,11 @@ async function handlePushNotifications(recipe, someUser) {
 
 //#region Update User Details
 
-function updateUserFavorites(username, favorites) {
+function updateUserFavorites(userId, favorites) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Key: {
-            hash: process.env['APP_NAME'], //Recipes
-            username: username
+            id: userId
         },
         UpdateExpression: "SET favorites = :favoritesValue",
         ExpressionAttributeValues: {
@@ -312,28 +308,33 @@ function updateUserFavorites(username, favorites) {
 
 //#endregion Update User Details
 
-exports.handler = async function(event, context, callback) {
+exports.handler = async (event, context, callback) => {
     let id = undefined, lastModifiedDate = undefined, requiredAuth = false;
     let patchAttrs = [];
 
     //console.log(event['body']);
 
     try {
-        if(event['pathParameters'] != undefined && event['pathParameters']['id'] != undefined) {
+        if(event['pathParameters'] !== undefined && event['pathParameters']['id'] !== undefined) {
             id = event['pathParameters']['id'];
         } else {
-            throw "request must contain recipe id";
+            throw {
+                code: 400, // Bad Request
+                message: "request must contain recipe id"
+            };
         }
-        if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModifiedDate'] != undefined) {
+        if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['lastModifiedDate'] !== undefined) {
             lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         }
-        
     
         const request = JSON.parse(event['body']);
 
         for(let key in request) {
             if(forbidPatch.includes(key)) {
-                throw "requested property cannot be patched. " + key;
+                throw {
+                    code: 400, // Bad Request
+                    message: "requested property cannot be changed. " + key
+                };
             }
             else{
                 if(authPatch.includes(key)) {
@@ -344,7 +345,10 @@ exports.handler = async function(event, context, callback) {
                     patchAttrs.push(key);
                 } 
                 else { // attribute not exists
-                    throw "requested property not exists. " + key;
+                    throw {
+                        code: 400, // Bad Request
+                        message: "requested property not exists. " + key
+                    };
                 }
             } 
         }
@@ -353,22 +357,28 @@ exports.handler = async function(event, context, callback) {
         if(lastModifiedDate !== undefined) {
             oldRecipe = await getRecipe(lastModifiedDate);
         } 
-        if(lastModifiedDate === undefined || oldRecipe === undefined || oldRecipe === null) {
+        if(oldRecipe === undefined) {
             oldRecipe = await getQueriedRecipe(id);
         }
         console.log("old recipe, " + oldRecipe);
-        if(oldRecipe == null || oldRecipe == undefined) {
-            throw "recipe not found!";
+        if(oldRecipe === undefined) {
+            throw {
+                code: 404, // Unauthorized
+                message: "recipe not found!"
+            };
         }
         //let username = 'john doe';
-        const username = await getUsername(event['headers']['Authorization']);//[0]['AccessToken']);
+        const { username, sub } = await getUser(event['headers']['Authorization']);
 
         if(requiredAuth) {
             //authorization check. only the uploader can change some attributes
             //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
 
-            if(username !== oldRecipe.uploader || username !== 'admin' || username !== 'admin2') {
-                throw "not authorized to change requested attributes!";
+            if(sub !== oldRecipe.uploader || username !== 'admin' || username !== 'admin2') {
+                throw {
+                    code: 401, // Unauthorized
+                    message: "not authorized to change requested attributes!"
+                };
             }
         }
 
@@ -383,12 +393,12 @@ exports.handler = async function(event, context, callback) {
 
         if(request['likes'] !== undefined) {//=== 'like' || request['likes'] === 'unlike') {
             // update user favorites record
-            let currentUser = await getUserFromDB(username, true);
+            let currentUser = await getUserFromDB(sub, true);
             if(currentUser.favorites === undefined || request['likes'] === 'like')
                 currentUser.favorites[oldRecipe.id] = oldRecipe.name;
             else
                 delete currentUser.favorites[oldRecipe.id];
-            await updateUserFavorites(username, currentUser.favorites);
+            await updateUserFavorites(sub, currentUser.favorites);
 
 
             if(request['likes'] === 'like') {
@@ -400,7 +410,12 @@ exports.handler = async function(event, context, callback) {
     catch(err) {
         //callback(err);
         //callback(null, setResponse(500, err));
-        callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
+        const { code, message } = err;
+        if (message !== undefined && code !== undefined) {
+            callback(null, setResponse(code, JSON.stringify({"message": message})));
+        } else {
+            callback(null, setResponse(500, JSON.stringify({"message": err})));
+        }
     }
 
 };

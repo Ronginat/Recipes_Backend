@@ -11,14 +11,12 @@ const lastModifiedKey = "lastModifiedDate";
 
 
 function setResponse(status, body){
-  let response = {
+  return {
       headers: {
           'Content-Type': 'application/json'},
       body: body,
       statusCode: status
   };
-    
-  return response;
 }
 
 function checkTableTime(){
@@ -91,14 +89,14 @@ function deleteLastModifiedItem(scan) {
 }
 
 // handleHttpRequest is the entry point for Lambda requests
-exports.handler = async function(event, context, callback) {
+exports.handler = async (event, context, callback) => {
     console.log('received event\n' + JSON.stringify(event));
     console.log("query string: " + event['queryStringParameters']['lastModified']);
     let lastModified = "0";
-    if(event['pathParameters'] != undefined && event['pathParameters']['lastmodified'] != undefined){
+    if(event['pathParameters'] !== undefined && event['pathParameters']['lastmodified'] !== undefined){
       lastModified = event['pathParameters']['lastmodified'];
     }
-    else if(event['queryStringParameters'] != undefined && event['queryStringParameters']['lastModified'] != undefined) {
+    else if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['lastModified'] !== undefined) {
       lastModified = event['queryStringParameters']['lastModified'];
     }
 
@@ -119,6 +117,7 @@ exports.handler = async function(event, context, callback) {
       callback(null, setResponse(200, JSON.stringify(results)));
     }
     catch(err) {
-      callback(err); 
+      //callback(err); 
+      callback(null, setResponse(500, JSON.stringify({"message": err})));
     }
 };
