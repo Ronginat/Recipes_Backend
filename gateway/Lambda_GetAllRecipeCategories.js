@@ -91,13 +91,10 @@ function deleteLastModifiedItem(scan) {
 // handleHttpRequest is the entry point for Lambda requests
 exports.handler = async (event, context, callback) => {
     console.log('received event\n' + JSON.stringify(event));
-    console.log("query string: " + event['queryStringParameters']['lastModified']);
+    //console.log("query string: " + event['queryStringParameters']['lastModifiedDate']);
     let lastModified = "0";
-    if(event['pathParameters'] !== undefined && event['pathParameters']['lastmodified'] !== undefined){
-      lastModified = event['pathParameters']['lastmodified'];
-    }
-    else if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['lastModified'] !== undefined) {
-      lastModified = event['queryStringParameters']['lastModified'];
+    if(event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
+      lastModified = event['queryStringParameters']['lastModifiedDate'];
     }
 
     try {
@@ -118,6 +115,11 @@ exports.handler = async (event, context, callback) => {
     }
     catch(err) {
       //callback(err); 
-      callback(null, setResponse(500, JSON.stringify({"message": err})));
+      const { statusCode, message } = err;
+      if (statusCode !== undefined && message !== undefined) {
+        callback(null, setResponse(statusCode, JSON.stringify(message)));
+      } else {
+        callback(null, setResponse(500, JSON.stringify(err)));
+      }
     }
 };

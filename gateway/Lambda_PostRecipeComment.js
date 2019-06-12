@@ -191,7 +191,7 @@ exports.handler = async (event, context, callback) => {
     //console.log(event['body']);
 
     try {
-        if(event['pathParameters'] !== undefined && event['pathParameters']['id'] !== undefined) {
+        if(event['pathParameters'] && event['pathParameters']['id']) {
             id = event['pathParameters']['id'];
         } else {
             throw {

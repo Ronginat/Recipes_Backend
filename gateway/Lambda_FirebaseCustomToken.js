@@ -4,7 +4,7 @@ const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
 const admin = require('firebase-admin');
 
-const serviceAccount = require('serviceAccount.json');
+const serviceAccount = require('./serviceAccount.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -13,7 +13,8 @@ admin.initializeApp({
 function setResponse(status, body){
     return {
         headers: {
-            'Content-Type': 'application/json'},
+            'Content-Type': 'application/json'
+        },
         body: body,
         statusCode: status
     };

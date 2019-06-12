@@ -1,5 +1,9 @@
 const AWS = require('aws-sdk');
 
+/**
+ * Unused Lambda
+ */
+
 AWS.config.update({region: process.env['REGION']});
 //const ddb = new AWS.DynamoDB({apiVersion: '2012-10-08'});
 const docClient = new AWS.DynamoDB.DocumentClient();

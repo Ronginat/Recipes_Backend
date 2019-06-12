@@ -121,7 +121,7 @@ exports.handler = async (event, context, callback) => {
     try {
         let id = undefined, lastModifiedDate = undefined;
 
-        if(event['pathParameters'] !== undefined && event['pathParameters']['id'] !== undefined) {
+        if(event['pathParameters'] && event['pathParameters']['id']) {
             id = event['pathParameters']['id'];
         }
         else {
@@ -130,7 +130,7 @@ exports.handler = async (event, context, callback) => {
                 message: "request must contain recipe id"
             };
         }
-        if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['lastModifiedDate'] !== undefined) {
+        if(event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
             lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         }
 

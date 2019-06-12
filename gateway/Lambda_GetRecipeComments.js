@@ -37,7 +37,7 @@ function getRecipeComments(key) {
             } 
             else {
                 console.log("Success GET", data);
-                return resolve(data['Items']);
+                return resolve(data.Items);
             }
         });
     });
@@ -48,26 +48,25 @@ exports.handler = async (request, context, callback) => {
     console.log(request);
 
     try {
-        if(request['pathParameters'] !== undefined && request['pathParameters']['id'] !== undefined) {
-            const id = request['pathParameters']['id'];
+        if(request['pathParameters'] && request['pathParameters']['id']) {
+            const { id } = request['pathParameters'];
             
-            //let item = await getRecipe(id);
             const comments = await getRecipeComments(id);
         
             console.log("response: " + JSON.stringify(comments));
             callback(null, setResponse(200, JSON.stringify(comments)));
-        } 
-            else throw {
-                code: 400, // Bad Request
-                message: "request must contain recipe id"
-            };
+        }
+        else throw {
+            statusCode: 400, // Bad Request
+            code: "request must contain recipe id"
+        };
     }
     catch(err) {
-        const { code, message } = err;
-        if (message !== undefined && code !== undefined) {
-            callback(null, setResponse(code, JSON.stringify({"message": message})));
+        const { statusCode, code } = err;
+        if (code !== undefined && statusCode !== undefined) {
+            callback(null, setResponse(statusCode, JSON.stringify(code)));
         } else {
-            callback(null, setResponse(500, JSON.stringify({"message": err})));
+            callback(null, setResponse(500, JSON.stringify(err)));
             //callback(null, setResponse(500, err));
         }
     }

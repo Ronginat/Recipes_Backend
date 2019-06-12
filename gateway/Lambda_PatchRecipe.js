@@ -7,7 +7,7 @@ const lambda = new AWS.Lambda({
     region: AWS.config.region,
     apiVersion: '2015-03-31'
 });
-
+const admins = ['f7ab604f-761d-4ca1-af89-6c446a78c7ed', '895b2d91-c939-4010-9c66-8df6891b8166'];
 const freePatch = ["likes"];
 //const freePatchGetUserName = ["comments"];
 const authPatch = ["name", "description", "categories", "html"];
@@ -315,7 +315,7 @@ exports.handler = async (event, context, callback) => {
     //console.log(event['body']);
 
     try {
-        if(event['pathParameters'] !== undefined && event['pathParameters']['id'] !== undefined) {
+        if(event['pathParameters'] && event['pathParameters']['id']) {
             id = event['pathParameters']['id'];
         } else {
             throw {
@@ -323,7 +323,7 @@ exports.handler = async (event, context, callback) => {
                 message: "request must contain recipe id"
             };
         }
-        if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['lastModifiedDate'] !== undefined) {
+        if(event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
             lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         }
     
@@ -374,7 +374,7 @@ exports.handler = async (event, context, callback) => {
             //authorization check. only the uploader can change some attributes
             //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
 
-            if(sub !== oldRecipe.uploader || username !== 'admin' || username !== 'admin2') {
+            if(sub !== oldRecipe.uploader || !admins.includes(sub)) {
                 throw {
                     code: 401, // Unauthorized
                     message: "not authorized to change requested attributes!"

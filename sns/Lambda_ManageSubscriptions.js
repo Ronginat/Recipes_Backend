@@ -221,7 +221,7 @@ exports.handler = async (event, context, callback) => {
         let recipeFlag = undefined, commentFlag = undefined, likeFlag = undefined, recipePolicy = undefined;
 
         //Retreive Path Parameter
-        if(event['pathParameters'] !== undefined && event['pathParameters'][pathParameters.device]) {
+        if(event['pathParameters'] && event['pathParameters'][pathParameters.device]) {
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
             throw {
@@ -230,16 +230,16 @@ exports.handler = async (event, context, callback) => {
             };
         }
         //Retreive Query Parameters
-        if(event['queryStringParameters'] !== undefined) {
-            if(event['queryStringParameters'][queryStringParameters.recipeSubscription] !== undefined) {
+        if(event['queryStringParameters']) {
+            if(event['queryStringParameters'][queryStringParameters.recipeSubscription]) {
                 recipeFlag = event['queryStringParameters'][queryStringParameters.recipeSubscription];
-                if(request[queryStringParameters.recipeSubscription] !== undefined)
+                if(request[queryStringParameters.recipeSubscription])
                     recipePolicy = JSON.parse(request[queryStringParameters.recipeSubscription]);
             }
-            if(event['queryStringParameters'][queryStringParameters.commentSubscription] !== undefined) {
+            if(event['queryStringParameters'][queryStringParameters.commentSubscription]) {
                 commentFlag = event['queryStringParameters'][queryStringParameters.commentSubscription];
             }
-            if(event['queryStringParameters'][queryStringParameters.likeSubscription] !== undefined) {
+            if(event['queryStringParameters'][queryStringParameters.likeSubscription]) {
                 likeFlag = event['queryStringParameters'][queryStringParameters.likeSubscription];
             }
         }

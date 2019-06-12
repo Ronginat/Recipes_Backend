@@ -55,7 +55,7 @@ exports.handler = async (event, context, callback) => {
 
     try {
         let deviceId = undefined;
-        if(event['pathParameters'] !== undefined && event['pathParameters'][pathParameters.device]) {
+        if(event['pathParameters'] && event['pathParameters'][pathParameters.device]) {
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
             throw "request must contain deviceId";

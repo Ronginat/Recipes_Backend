@@ -67,7 +67,7 @@ async function getAll(date, ExclusiveStartKey, userLimit) {
     console.log("Scan Success, item count = ", listData.length + ", last key = " + JSON.stringify(LastEvaluatedKey));
     return {
         "LastEvaluatedKey": LastEvaluatedKey, 
-        "listData": listData
+        "items": listData
     };
 }
 
@@ -80,14 +80,14 @@ exports.handler = async (request, context, callback) => {
     /*if(request['pathParameters'] != undefined && request['pathParameters']['bydate'] != undefined) {
         date = request['pathParameters']['bydate'];
     }
-    else */if(request['queryStringParameters'] !== undefined && request['queryStringParameters']['lastModified'] !== undefined) {
-        date = request['queryStringParameters']['lastModified'];
+    else */if(event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
+        date = request['queryStringParameters']['lastModifiedDate'];
     }
-    if(request['queryStringParameters'] !== undefined && request['queryStringParameters']['Last-Evaluated-Key'] !== undefined) {
+    if(request['queryStringParameters'] && request['queryStringParameters']['Last-Evaluated-Key']) {
         startKey = request['queryStringParameters']['Last-Evaluated-Key'];
         startKey = JSON.parse(startKey);
     }
-    if(request['queryStringParameters'] !== undefined && request['queryStringParameters']['limit'] !== undefined) {
+    if(request['queryStringParameters'] && request['queryStringParameters']['limit']) {
         userLimit = request['queryStringParameters']['limit'];
     }
     
@@ -107,14 +107,15 @@ exports.handler = async (request, context, callback) => {
     try {
         //let items = undefined;
         const { LastEvaluatedKey, items } = await getAll(date, startKey, userLimit);
-        if (startKey !== undefined && (items === undefined || items.length == 0)) {
+        if (startKey === undefined && items.length === 0) {
             response.statusCode = 304;
+        } else {
+            response.body = JSON.stringify(items);
         }
-        if (LastEvaluatedKey != undefined) {
+        if (LastEvaluatedKey !== undefined) {
             response['headers']['Last-Evaluated-Key'] = JSON.stringify(LastEvaluatedKey);
         }
         
-        response.body = JSON.stringify(items);
         console.log("finish get all recipes");
         callback(null, response);
 

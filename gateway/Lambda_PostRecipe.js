@@ -44,9 +44,7 @@ function getUser(token){
     });
 }
 
-function putRecipe(recipe) {
-    const date = dateToString();
-
+function putRecipe(recipe, date) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
         Item: {
@@ -57,12 +55,11 @@ function putRecipe(recipe) {
             'uploader': recipe.uploader,
             'categories': recipe.categories,
             'html': recipe.html,
-            'creationDate': recipe.creationDate,
+            'creationDate': date,
             'lastModifiedDate': date,
             'likes': 0,
             'isDeleted': false
-        },
-        ReturnValues: "ALL_NEW"
+        }
     };
 
     return new Promise((resolve, reject) => {
@@ -76,6 +73,39 @@ function putRecipe(recipe) {
                 console.log("Success recipe PUT", data);
                 // return the stored recipe
                 return resolve(data.Attributes);
+            }
+        });
+    });
+}
+
+/**
+ * Put recipe content (html string) in recipes table at 'content' partition.
+ * @param {any} recipe 
+ */
+function putContent(recipe) {
+    const params = {
+        TableName: process.env['RECIPE_TABLE'],
+        Item: {
+            'id' : recipe.id,
+            'sharedKey': process.env['CONTENT_KEY'], // hash key for recipe content is static 'content'
+            'name' : recipe.name,
+            'html': recipe.html,
+            'lastModifiedDate': recipe.id, // sort key for content is recipe id. Each recipe can hold one content record
+            'lastModifiedContent': recipe.lastModifiedDate
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        docClient.put(params, function(err, data) {
+            if (err) {
+                console.log("Error recipe content PUT", err);
+                return reject(err);
+            } 
+            else {
+                console.log("Success recipe content PUT", data);
+                // return the stored recipe
+                return resolve(data);
             }
         });
     });
@@ -156,27 +186,43 @@ function updateUserPostedRecipes(userId, recipeId) {
 
 //#endregion Update User Details
 
+function checkInput(recipe) {
+    const required = ['name', 'description', 'categories', 'html'];
+    required.forEach(property => {
+        if (!recipe.hasOwnProperty(property)) {
+            throw "missing property! " + property;
+        }
+    });
+    return true;
+}
+
 exports.handler = async (event, context, callback) => {
     console.log(event);
 
+    const admins = ['f7ab604f-761d-4ca1-af89-6c446a78c7ed', '895b2d91-c939-4010-9c66-8df6891b8166'];
     const eventBody = JSON.parse(event['body']);
     
     try {
         const results = {};
-                        //let username = await getUsername(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
+        checkInput(eventBody); // will throw exception if needed
+        //const { username, sub } = await getUser(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         const { username, sub } = await getUser(event['headers']['Authorization']);
-        eventBody['recipe']['uploader'] = sub;
-        console.log('userid: ' + eventBody.recipe.uploader);
+        if (eventBody.uploader === undefined || !admins.includes(sub)) {
+            eventBody['uploader'] = sub;
+        }
         const newId = nanoid(12);
-        eventBody['recipe']['id'] = newId;
+        eventBody['id'] = newId;
 
-        const storedRecipe = await putRecipe(eventBody.recipe);
+        const date = dateToString();
+        await putRecipe(eventBody, date);
+        eventBody.lastModifiedDate = date;
+        await putContent(eventBody);
 
-        results['id'] = storedRecipe.id;
-        storedRecipe.uploader = username;
+        results['id'] = eventBody.id;
+        eventBody.uploader = username;
 
         await Promise.all([
-            invokePublishLambda(storedRecipe),
+            invokePublishLambda(eventBody),
             updateUserPostedRecipes(sub, newId)
         ]);
         

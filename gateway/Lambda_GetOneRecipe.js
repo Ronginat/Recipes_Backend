@@ -64,7 +64,7 @@ function getQueriedRecipe(recipeId) {
                 }
                 if(/* data.Count === 0 ||  */data.Items.length === 0) {
                     return reject({
-                        status: 404, // Not Found
+                        statusCode: 404, // Not Found
                         message: "recipe not found"
                     });
                 }
@@ -80,15 +80,15 @@ exports.handler = async (event, context, callback) => {
     //console.log(event['body']);
 
     try {
-        if (event['pathParameters'] !== undefined && event['pathParameters']['id'] !== undefined) {
+        if (event['pathParameters'] && event['pathParameters']['id']) {
             id = event['pathParameters']['id'];
         } else {
             throw {
-                status: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "request must contain recipe id"
             };
         }
-        if (event['queryStringParameters'] !== undefined && event['queryStringParameters']['lastModifiedDate'] !== undefined) {
+        if (event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
             lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         }
         
@@ -108,12 +108,11 @@ exports.handler = async (event, context, callback) => {
     catch(err) {
         //callback(err);
         //callback(null, setResponse(500, err));
-        const { status, message } = err;
-        if (message !== undefined && status !== undefined) {
-            callback(null, setResponse(status, JSON.stringify({"message": message})));
+        const { statusCode, message } = err;
+        if (message !== undefined && statusCode !== undefined) {
+            callback(null, setResponse(statusCode, JSON.stringify(message)));
         } else {
-            callback(null, setResponse(500, JSON.stringify({"message": err})));
+            callback(null, setResponse(500, JSON.stringify(err)));
         }
     }
-
 };

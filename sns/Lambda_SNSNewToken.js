@@ -111,7 +111,7 @@ function deleteUserFromDB(userId) {
     return new Promise((resolve, reject) => {
         docClient.delete(params, (err, data) => {
             if (err) {
-                console.error("Couldn't get the user. Error JSON:", JSON.stringify(err, null, 2));
+                console.error("Couldn't delete the user. Error JSON:", JSON.stringify(err, null, 2));
                 reject(err);
             } else {
                 // print all the data
@@ -126,17 +126,17 @@ function writeUserInDB(user) {
     const params = {
         TableName: process.env['USERS_TABLE'],
         Item: user,
-        ReturnValues: "ALL_NEW"
+        ReturnValues: "ALL_OLD"
     };
 
     return new Promise((resolve, reject) => {
         docClient.put(params, (err, data) => {
             if (err) {
-                console.error("Couldn't get the user. Error JSON:", JSON.stringify(err, null, 2));
+                console.error("Couldn't write the user. Error JSON:", JSON.stringify(err, null, 2));
                 reject(err);
             } else {
                 // print all the data
-                console.log("Delete succeeded. ", JSON.stringify(data));
+                console.log("PUT succeeded. ", JSON.stringify(data));
                 resolve(data.Attributes);
             }
         });
@@ -146,7 +146,8 @@ function writeUserInDB(user) {
 async function replaceNameWithId(userId, username) {
     const deletedUser = await deleteUserFromDB(username);
     deletedUser.id = userId;
-    const newUser = await writeUserInDB(deletedUser);
+    await writeUserInDB(deletedUser);
+    const newUser = await getUserFromDB(userId);
     return newUser;
 }
 
@@ -190,7 +191,7 @@ function subscribeToTopic(topic, endpoint, platform) {
             break;
         default:
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "can't subscribe with platform " + platform
             };
     }
@@ -221,7 +222,7 @@ function createEndpoint(token, username, platform) {
             break;
         default:
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "platform " + platform + " is not supported!"
             };
     }
@@ -268,17 +269,17 @@ exports.handler = async (event, context, callback) => {
     try {
         let token = undefined, deviceId = undefined, platform = platforms.android;
 
-        if(event['pathParameters'][pathParameters.token] !== undefined && event['pathParameters'][pathParameters.device]) {
+        if(event['pathParameters'][pathParameters.token] && event['pathParameters'][pathParameters.device]) {
             token = event['pathParameters'][pathParameters.token];
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "request must contain deviceId and token"
             };
         }
 
-        if(event['queryStringParameters'] !== undefined && event['queryStringParameters']['platform'] !== undefined) {
+        if(event['queryStringParameters'] && event['queryStringParameters']['platform']) {
             platform = event['queryStringParameters']['platform'];
         }
 
@@ -334,11 +335,11 @@ exports.handler = async (event, context, callback) => {
     } catch(err) {
         console.log(JSON.stringify(err));
         //callback(err);
-        const { code, message } = err;
-        if (message !== undefined && code !== undefined) {
-            callback(null, setResponse(code, JSON.stringify({"message": message})));
+        const { statusCode, message } = err;
+        if (message !== undefined && statusCode !== undefined) {
+            callback(null, setResponse(statusCode, JSON.stringify(message)));
         } else {
-            callback(null, setResponse(500, JSON.stringify({"message": err})));
+            callback(null, setResponse(500, JSON.stringify(err)));
         }
     }    
 };
