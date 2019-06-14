@@ -65,7 +65,7 @@ function getQueriedRecipe(recipeId) {
                 }
                 if(data.Count === 0 || data.Items.length === 0) {
                     return reject({
-                        code: 404, // Not Found
+                        statusCode: 404, // Not Found
                         message: "recipe not found"
                     });
                 }
@@ -115,62 +115,74 @@ function signUrls(fileNames) {
 }
 
 exports.handler = async (event, context, callback) => {
-    console.log(event);
-    const eventBody = JSON.parse(event['body']);
+    console.log(JSON.stringify(event));
 
     try {
         let id = undefined, lastModifiedDate = undefined;
 
         if(event['pathParameters'] && event['pathParameters']['id']) {
             id = event['pathParameters']['id'];
-        }
-        else {
+        } else {
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "request must contain recipe id"
             };
         }
-        if(event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
-            lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
+        if (!event['queryStringParameters']) {
+            throw {
+                statusCode: 400, // Bad Request
+                message: "missing numOfFiles and extension query params"
+            };
         }
 
-        if(id !== undefined) {
-            const numOfFiles = parseInt(eventBody['numOfFiles'], 10);
+        const { queryStringParameters: queryParams } = event; // event object destructuring
         
-            let recipeItem = undefined;
-            if(lastModifiedDate !== undefined) {
-                recipeItem = await getRecipe(lastModifiedDate);
-            } 
-            if(recipeItem === undefined) {
-                recipeItem = await getQueriedRecipe(id);
-            }
-
-            if(recipeItem !== undefined) {
-                console.log('generating names');
-                let fileNames = generateFileNames(numOfFiles, recipeItem, eventBody['extension']);
-                console.log("files\n" + fileNames);
-                //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
-                console.log('signing urls');
-                let urls = signUrls(fileNames);
-
-                callback(null, setResponse(200, JSON.stringify(urls)));
-            } 
-            else
-                throw {
-                    code: 404,
-                    message: "recipe not found!"
-                };
+        if (queryParams['lastModifiedDate']) {
+            lastModifiedDate = queryParams['lastModifiedDate'];
         }
+        if (!queryParams['numOfFiles'] || !queryParams['extension']) {
+            throw {
+                statusCode: 400, // Bad Request
+                message: "numOfFiles and extension query params required"
+            };
+        }
+        
+        const numOfFiles = parseInt(queryParams['numOfFiles'], 10);
+    
+        let recipeItem = undefined;
+        if(lastModifiedDate !== undefined) {
+            recipeItem = await getRecipe(lastModifiedDate);
+        } 
+        if(recipeItem === undefined) {
+            recipeItem = await getQueriedRecipe(id);
+        }
+
+        if(recipeItem !== undefined) {
+            console.log('generating names');
+            let fileNames = generateFileNames(numOfFiles, recipeItem, queryParams['extension']);
+            console.log("files\n" + fileNames);
+            //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
+            console.log('signing urls');
+            const urls = signUrls(fileNames);
+
+            callback(null, setResponse(200, JSON.stringify(urls)));
+        } 
+        else
+            throw {
+                statusCode: 404,
+                message: "recipe not found!"
+            };
+        
         //if (Object.keys(pend.UnprocessedItems).length === 0)
         
     } catch(err) {
         console.log(err);
         //callback(null, setResponse(500, err));
-        const { code, message } = err;
-        if (message !== undefined && code !== undefined) {
-            callback(null, setResponse(code, JSON.stringify({"message": message})));
+        const { statusCode, message } = err;
+        if (message !== undefined && statusCode !== undefined) {
+            callback(null, setResponse(statusCode, JSON.stringify(message)));
         } else {
-            callback(null, setResponse(500, JSON.stringify({"message": err})));
+            callback(null, setResponse(500, JSON.stringify(err)));
         }
     }
 };

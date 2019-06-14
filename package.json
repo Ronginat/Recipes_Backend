@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/Ronginat/Recipes_Backend#readme",
   "dependencies": {
-    "aws-sdk": "^2.468.0",
-    "firebase-admin": "^8.0.0"
+    "aws-sdk": "^2.475.0",
+    "firebase-admin": "^8.1.0"
   }
 }

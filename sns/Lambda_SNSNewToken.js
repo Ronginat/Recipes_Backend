@@ -9,6 +9,14 @@ const sns = new AWS.SNS({
     apiVersion: '2010-03-31'
 });
 
+const admin = require('firebase-admin');
+
+const serviceAccount = require('./serviceAccount.json');
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 const platforms = {
     android: "android",
     ios: "ios",
@@ -151,6 +159,21 @@ async function replaceNameWithId(userId, username) {
     return newUser;
 }
 
+/**
+ * register the user in firebase database (firestore) as document 
+ * with key of userId and value as username
+ * @param {string} userId - document key
+ * @param {string} username - docmuent value
+ */
+function documentUserInFirestore(userId, username) {
+    const firestore = admin.firestore();
+    return firestore.collection('users').doc(userId).set({
+        username: username
+    }, {
+        merge: true
+    });
+}
+
 function updateUser(user) {
     const params = {
         TableName: process.env['USERS_TABLE'],
@@ -288,6 +311,11 @@ exports.handler = async (event, context, callback) => {
         if (user === undefined) {
             // first token registration, replace record key username with sub id
             user = await replaceNameWithId(sub, username);
+
+            [user, firebaseRes] = await Promise.all([
+                replaceNameWithId(sub, username),
+                documentUserInFirestore(sub, username)
+            ]);
         }
 
         // the client is in onNewToken()

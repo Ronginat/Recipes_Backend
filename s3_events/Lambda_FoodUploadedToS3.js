@@ -135,7 +135,7 @@ exports.handler = async (event) => {
     const uploadedName = record['object']['key'];
     const bucket = record['bucket']['name'];
 
-    console.log(record);
+    console.log(JSON.stringify(record));
     try {
         const id = decodeID(uploadedName);
         const fileName = decodeFileName(uploadedName);

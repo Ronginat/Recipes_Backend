@@ -54,7 +54,6 @@ function putRecipe(recipe, date) {
             'description': recipe.description,
             'uploader': recipe.uploader,
             'categories': recipe.categories,
-            'html': recipe.html,
             'creationDate': date,
             'lastModifiedDate': date,
             'likes': 0,
@@ -219,6 +218,7 @@ exports.handler = async (event, context, callback) => {
         await putContent(eventBody);
 
         results['id'] = eventBody.id;
+        results['lastModifiedDate'] = eventBody.lastModifiedContent;
         eventBody.uploader = username;
 
         await Promise.all([
