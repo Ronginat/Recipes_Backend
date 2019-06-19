@@ -35,10 +35,7 @@ function getUser(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve({
-                    "username": data.Username,
-                    "sub": data.UserAttributes.find(attr => attr.Name === 'sub').Value
-                });
+                return resolve(data.Username);
             }    
         });
     });
@@ -48,16 +45,17 @@ function putRecipe(recipe, date) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
         Item: {
+            'partitionKey': process.env['RECIPES_PARTITION'],
+            'sort': date, // lastModifiedDate
             'id' : recipe.id,
-            'sharedKey': process.env['SHARED_KEY'],
             'name' : recipe.name,
             'description': recipe.description,
             'uploader': recipe.uploader,
             'categories': recipe.categories,
+            'lastModifiedDate': date, // duplicate of sort key, convenience attribute 
             'creationDate': date,
-            'lastModifiedDate': date,
-            'likes': 0,
-            'isDeleted': false
+            'likes': 0
+            //'isDeleted': false
         }
     };
 
@@ -85,11 +83,10 @@ function putContent(recipe) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
         Item: {
-            'id' : recipe.id,
-            'sharedKey': process.env['CONTENT_KEY'], // hash key for recipe content is static 'content'
+            'partitionKey': process.env['CONTENT_PARTITION'], // hash key for recipe content is static 'content'
+            'sort' : recipe.id, // sort key for content is recipe id. Each recipe can hold one content record
             'name' : recipe.name,
             'html': recipe.html,
-            'lastModifiedDate': recipe.id, // sort key for content is recipe id. Each recipe can hold one content record
             'lastModifiedContent': recipe.lastModifiedDate
         }
     };
@@ -153,14 +150,15 @@ function invokePublishLambda(recipe) {
 
 /**
  * Add the posted recipe to user's "posted" attribute.
- * @param {string} userId - id of posting user
+ * @param {string} username - username of posting user
  * @param {string} recipeId - id of posted recipe
  */
-function updateUserPostedRecipes(userId, recipeId) {
+function updateUserPostedRecipes(username, recipeId) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Key: {
-            id: userId
+            partitionKey: process.env['USERS_PARTITION'],
+            sort: username
         },
         ConditionExpression: "attribute_exists(posted)",
         UpdateExpression: "SET posted = list_append(posted, :postValue)",
@@ -196,21 +194,21 @@ function checkInput(recipe) {
 }
 
 exports.handler = async (event, context, callback) => {
-    console.log(event);
+    console.log(JSON.stringify(event));
 
-    const admins = ['f7ab604f-761d-4ca1-af89-6c446a78c7ed', '895b2d91-c939-4010-9c66-8df6891b8166'];
+    const admins = ['admin'];
     const eventBody = JSON.parse(event['body']);
     
     try {
         const results = {};
         checkInput(eventBody); // will throw exception if needed
         //const { username, sub } = await getUser(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
-        const { username, sub } = await getUser(event['headers']['Authorization']);
-        if (eventBody.uploader === undefined || !admins.includes(sub)) {
-            eventBody['uploader'] = sub;
+        const username = await getUser(event['headers']['Authorization']);
+        if (eventBody.uploader === undefined || !admins.includes(username)) {
+            eventBody['uploader'] = username;
         }
         const newId = nanoid(12);
-        eventBody['id'] = newId;
+        eventBody.id = newId;
 
         const date = dateToString();
         await putRecipe(eventBody, date);
@@ -223,13 +221,13 @@ exports.handler = async (event, context, callback) => {
 
         await Promise.all([
             invokePublishLambda(eventBody),
-            updateUserPostedRecipes(sub, newId)
+            updateUserPostedRecipes(username, newId)
         ]);
         
         callback(null, setResponse(200, JSON.stringify(results)));
         
     } catch(err) {
         console.log('got error, ' + err);
-        callback(null, setResponse(500, JSON.stringify({ "message": err })));
+        callback(null, setResponse(500, JSON.stringify(err)));
     }
 };

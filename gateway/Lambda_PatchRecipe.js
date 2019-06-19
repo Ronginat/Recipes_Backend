@@ -7,11 +7,11 @@ const lambda = new AWS.Lambda({
     region: AWS.config.region,
     apiVersion: '2015-03-31'
 });
-const admins = ['f7ab604f-761d-4ca1-af89-6c446a78c7ed', '895b2d91-c939-4010-9c66-8df6891b8166'];
+const admins = ['admin'];
 const freePatch = ["likes"];
 //const freePatchGetUserName = ["comments"];
 const authPatch = ["name", "description", "categories", "html"];
-const forbidPatch = ["id", "recipeFile", "foodFiles", "createdAt", "sharedKey", "uploader", "lastModifiedDate"];
+const forbidPatch = ["id", "recipeFile", "foodFiles", "createdAt", "partitionKey", "sort", "uploader", "lastModifiedDate"];
 
 
 function setResponse(status, body){
@@ -39,10 +39,7 @@ function getUser(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve({
-                    "username": data.Username,
-                    "sub": data.UserAttributes.find(attr => attr.Name === 'sub').Value
-                });
+                return resolve(data.Username);
             }    
         });
     });
@@ -54,8 +51,8 @@ function getRecipe(sortKey) {
     const get_params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            "sharedKey": process.env['SHARED_KEY'],
-            "lastModifiedDate": sortKey
+            partitionKey: process.env['RECIPE_PARTITION'],
+            sort: sortKey // lastModifiedDate
         }
     };
 
@@ -77,13 +74,13 @@ function getQueriedRecipe(recipeId) {
     const get_params = {
         /*Limit: 2,*/
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "sharedKey = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
         },
         ExpressionAttributeValues: {
-            ":v_key": process.env['SHARED_KEY'],
+            ":v_key": process.env['RECIPE_PARTITION'],
             ":v_id": recipeId
         },
         /*ReturnConsumedCapacity: "TOTAL"*/
@@ -112,12 +109,12 @@ function getQueriedRecipe(recipeId) {
     });
 }
 
-function deleteOldRecipe(partition, sort, id) {
+function deleteOldRecipe(partition, lastModified, id) {
     const deleteParams = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            sharedKey: partition,
-            lastModifiedDate: sort
+            partitionKey: partition,
+            sort: lastModified // lastModifiedDate
         },
         ConditionExpression: "#id = :v_id",
         ExpressionAttributeNames: {
@@ -168,14 +165,13 @@ async function patchRecipe(request, oldRecipe, username, date) {
     }
 
     console.log('updated recipe: ' + JSON.stringify(oldRecipe));
-    await deleteOldRecipe(process.env['SHARED_KEY'], oldRecipe.lastModifiedDate, oldRecipe.id);
+    await deleteOldRecipe(process.env['RECIPE_PARTITION'], oldRecipe.lastModifiedDate, oldRecipe.id);
 
     oldRecipe.lastModifiedDate = date;
     
     const putRecipeParams = {
         TableName: process.env['RECIPE_TABLE'],
         Item: oldRecipe
-        
     };
 
     return new Promise((resolve, reject) => {
@@ -197,13 +193,17 @@ async function patchRecipe(request, oldRecipe, username, date) {
 
 //#region SNS Methods
 
-function getUserFromDB(userId, withFavorites) {
+function getUserFromDB(username, withFavorites) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Key: {
-            id : userId
+            partitionKey: process.env['USERS_PARTITION'],
+            sort : username
         },
-        ProjectionExpression: "username, devices"
+        ProjectionExpression: "#username, devices",
+        ExpressionAttributeNames: {
+            "#username": "sort"
+        }
     };
 
     if(withFavorites)
@@ -220,7 +220,7 @@ function getUserFromDB(userId, withFavorites) {
                 if(data.Item === undefined)
                     return reject({
                         code: 404, // Not Found
-                        message: "user not found, " + userId
+                        message: "user not found, " + username
                     });
                 resolve(data.Item);
             }
@@ -280,11 +280,12 @@ async function handlePushNotifications(recipe, someUser) {
 
 //#region Update User Details
 
-function updateUserFavorites(userId, favorites) {
+function updateUserFavorites(username, favorites) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Key: {
-            id: userId
+            partitionKey: process.env['USERS_PARTITION'],
+            sort: username
         },
         UpdateExpression: "SET favorites = :favoritesValue",
         ExpressionAttributeValues: {
@@ -368,13 +369,13 @@ exports.handler = async (event, context, callback) => {
             };
         }
         //let username = 'john doe';
-        const { username, sub } = await getUser(event['headers']['Authorization']);
+        const username = await getUser(event['headers']['Authorization']);
 
         if(requiredAuth) {
             //authorization check. only the uploader can change some attributes
             //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
 
-            if(sub !== oldRecipe.uploader || !admins.includes(sub)) {
+            if(username !== oldRecipe.uploader || !admins.includes(username)) {
                 throw {
                     code: 401, // Unauthorized
                     message: "not authorized to change requested attributes!"
@@ -393,12 +394,12 @@ exports.handler = async (event, context, callback) => {
 
         if(request['likes'] !== undefined) {//=== 'like' || request['likes'] === 'unlike') {
             // update user favorites record
-            let currentUser = await getUserFromDB(sub, true);
+            let currentUser = await getUserFromDB(username, true);
             if(currentUser.favorites === undefined || request['likes'] === 'like')
                 currentUser.favorites[oldRecipe.id] = oldRecipe.name;
             else
                 delete currentUser.favorites[oldRecipe.id];
-            await updateUserFavorites(sub, currentUser.favorites);
+            await updateUserFavorites(username, currentUser.favorites);
 
 
             if(request['likes'] === 'like') {
@@ -417,5 +418,4 @@ exports.handler = async (event, context, callback) => {
             callback(null, setResponse(500, JSON.stringify({"message": err})));
         }
     }
-
 };

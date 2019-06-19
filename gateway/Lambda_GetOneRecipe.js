@@ -16,8 +16,8 @@ function getRecipe(sortKey) {
     const get_params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            "sharedKey": process.env['SHARED_KEY'],
-            "lastModifiedDate": sortKey
+            partitionKey: process.env['RECIPES_PARTITION'],
+            sort: sortKey // lastModifiedDate
         }
     };
 
@@ -39,13 +39,13 @@ function getQueriedRecipe(recipeId) {
     const get_params = {
         /*Limit: 2,*/
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "sharedKey = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
         },
         ExpressionAttributeValues: {
-            ":v_key": process.env['SHARED_KEY'],
+            ":v_key": process.env['RECIPES_PARTITION'],
             ":v_id": recipeId
         },
         /*ReturnConsumedCapacity: "TOTAL"*/
@@ -77,7 +77,7 @@ function getQueriedRecipe(recipeId) {
 
 exports.handler = async (event, context, callback) => {
     let id = undefined, lastModifiedDate = undefined;
-    //console.log(event['body']);
+    //console.log(JSON.stringify(event.body));
 
     try {
         if (event['pathParameters'] && event['pathParameters']['id']) {

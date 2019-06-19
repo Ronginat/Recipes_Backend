@@ -7,20 +7,22 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 const params = {
     Limit: process.env['LIMIT'],
     TableName: process.env['TABLE'],
-    KeyConditionExpression: "sharedKey = :v_key AND #modified >= :v_time",
+    KeyConditionExpression: "#partition = :v_key AND #sort >= :v_time",
     ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #thumbnail, #images, #categories, #likes, #deleted",
     ExpressionAttributeNames: {
-      "#id":  "id",
-      "#name": "name",
-      "#desc": "description",
-      "#created": "creationDate",
-      "#modified": "lastModifiedDate",
-      "#uploader": "uploader",
-      "#thumbnail": "thumbnail",
-      "#images": "foodFiles",
-      "#categories": "categories",
-      "#likes": "likes",
-      "#deleted": "isDeleted"
+        "#partition": "partitionKey",
+        "#sort": "sort",
+        "#id":  "id",
+        "#name": "name",
+        "#desc": "description",
+        "#created": "creationDate",
+        "#modified": "lastModifiedDate",
+        "#uploader": "uploader",
+        "#thumbnail": "thumbnail",
+        "#images": "foodFiles",
+        "#categories": "categories",
+        "#likes": "likes",
+        "#deleted": "isDeleted"
     },
     ScanIndexForward: false,
     ReturnConsumedCapacity: "TOTAL"
@@ -46,7 +48,7 @@ function onQuery(LastEvaluatedKey) {
 
 async function getAll(date, ExclusiveStartKey, userLimit) {
     const ExpressionAttributeValues = {
-        ":v_key": process.env['SHARED_KEY'],
+        ":v_key": process.env['RECIPES_PARTITION'],
         ":v_time": date
     };
     params['ExpressionAttributeValues'] = ExpressionAttributeValues;
@@ -73,22 +75,22 @@ async function getAll(date, ExclusiveStartKey, userLimit) {
 
 
 // handleHttpRequest is the entry point for Lambda requests
-exports.handler = async (request, context, callback) => {
-    console.log('received event');
-    
+exports.handler = async (event, context, callback) => {
+    console.log('received event', JSON.stringify());
     let date = "0", startKey = undefined, userLimit = process.env['LIMIT'];
-    /*if(request['pathParameters'] != undefined && request['pathParameters']['bydate'] != undefined) {
-        date = request['pathParameters']['bydate'];
-    }
-    else */if(event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
-        date = request['queryStringParameters']['lastModifiedDate'];
-    }
-    if(request['queryStringParameters'] && request['queryStringParameters']['Last-Evaluated-Key']) {
-        startKey = request['queryStringParameters']['Last-Evaluated-Key'];
-        startKey = JSON.parse(startKey);
-    }
-    if(request['queryStringParameters'] && request['queryStringParameters']['limit']) {
-        userLimit = request['queryStringParameters']['limit'];
+
+    if (event['queryStringParameters'])  {
+       const { queryStringParameters: queryParams }  = event;
+       if (queryParams['lastModifiedDate']) {
+           date = queryParams['lastModifiedDate'];
+       }
+       if (queryParams['Last-Evaluated-Key']) {
+           startKey = queryParams['Last-Evaluated-Key'];
+           startKey = JSON.parse(startKey);
+       }
+       if (queryParams['limit']) {
+           userLimit = queryParams['limit'];
+       }
     }
     
     console.log('requested time: '+ date);
@@ -121,7 +123,10 @@ exports.handler = async (request, context, callback) => {
 
     } catch(err) {
         console.error("caught exception, " + err);
-        response.body = JSON.stringify({"message": err});
+        if (err.message) {
+            err = err.message;
+        }
+        response.body = JSON.stringify(err);
         response.statusCode = 500;
         callback(null, response);
     }

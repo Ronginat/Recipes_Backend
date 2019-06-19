@@ -9,13 +9,13 @@ const sns = new AWS.SNS({
     apiVersion: '2010-03-31'
 });
 
-const admin = require('firebase-admin');
+/* const admin = require('firebase-admin');
 
 const serviceAccount = require('./serviceAccount.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-});
+}); */
 
 const platforms = {
     android: "android",
@@ -72,24 +72,22 @@ function getUser(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve({
-                    "username": data.Username,
-                    "sub": data.UserAttributes.find(attr => attr.Name === 'sub').Value
-                });
+                return resolve(data.Username);
             }    
         });
     });
 }
 
-function getUserFromDB(userId) {
+function getUserFromDB(username) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPES_TABLE'],
         Key: {
-            id : userId
+            partitionKey: process.env['USERS_PARTITION'],
+            sort : username
         },
-        ProjectionExpression: "#id, username, devices, confirmed",
+        ProjectionExpression: "#username, devices, confirmed",
         ExpressionAttributeNames: {
-            "#id": "id"
+            "#username": "sort"
         }
     };
 
@@ -107,79 +105,27 @@ function getUserFromDB(userId) {
     });
 }
 
-function deleteUserFromDB(userId) {
-    const params = {
-        TableName: process.env['USERS_TABLE'],
-        Key: {
-            id : userId
-        },
-        ReturnValues: "ALL_OLD"
-    };
-
-    return new Promise((resolve, reject) => {
-        docClient.delete(params, (err, data) => {
-            if (err) {
-                console.error("Couldn't delete the user. Error JSON:", JSON.stringify(err, null, 2));
-                reject(err);
-            } else {
-                // print all the data
-                console.log("Delete succeeded. ", JSON.stringify(data));
-                resolve(data.Attributes);
-            }
-        });
-    }); 
-}
-
-function writeUserInDB(user) {
-    const params = {
-        TableName: process.env['USERS_TABLE'],
-        Item: user,
-        ReturnValues: "ALL_OLD"
-    };
-
-    return new Promise((resolve, reject) => {
-        docClient.put(params, (err, data) => {
-            if (err) {
-                console.error("Couldn't write the user. Error JSON:", JSON.stringify(err, null, 2));
-                reject(err);
-            } else {
-                // print all the data
-                console.log("PUT succeeded. ", JSON.stringify(data));
-                resolve(data.Attributes);
-            }
-        });
-    }); 
-}
-
-async function replaceNameWithId(userId, username) {
-    const deletedUser = await deleteUserFromDB(username);
-    deletedUser.id = userId;
-    await writeUserInDB(deletedUser);
-    const newUser = await getUserFromDB(userId);
-    return newUser;
-}
-
-/**
+/*
  * register the user in firebase database (firestore) as document 
  * with key of userId and value as username
  * @param {string} userId - document key
  * @param {string} username - docmuent value
  */
-function documentUserInFirestore(userId, username) {
+/* function documentUserInFirestore(userId, username) {
     const firestore = admin.firestore();
     return firestore.collection('users').doc(userId).set({
         username: username
     }, {
         merge: true
     });
-}
+} */
 
 function updateUser(user) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPES_TABLE'],
         Key: {
-            //hash: process.env['APP_NAME'], //Recipes
-            id: user.id
+            partitionKey: process.env['USERS_PARTITION'], //user
+            sort: user.sort
         },
         UpdateExpression: "SET devices = :devicesValue, confirmed = :confirmedValue",
         ExpressionAttributeValues: {
@@ -235,7 +181,7 @@ function subscribeToTopic(topic, endpoint, platform) {
 }
 
 function createEndpoint(token, username, platform) {
-    let params = {
+    const params = {
         Token: token,
         CustomUserData: username
     };
@@ -265,7 +211,7 @@ function createEndpoint(token, username, platform) {
 }
 
 function updateEndpointToken(token, endpoint) {
-    var params = {
+    const params = {
         Attributes: {
             Token: token
         },
@@ -306,16 +252,13 @@ exports.handler = async (event, context, callback) => {
             platform = event['queryStringParameters']['platform'];
         }
 
-        const { username, sub } = await getUser(event['headers']['Authorization']);
-        let user = await getUserFromDB(sub);
-        if (user === undefined) {
-            // first token registration, replace record key username with sub id
-            user = await replaceNameWithId(sub, username);
-
-            [user, firebaseRes] = await Promise.all([
-                replaceNameWithId(sub, username),
-                documentUserInFirestore(sub, username)
-            ]);
+        const username = await getUser(event['headers']['Authorization']);
+        const user = await getUserFromDB(username);
+        if (!user) {
+            throw {
+                statusCode: 404,
+                message: "User not found"
+            };
         }
 
         // the client is in onNewToken()

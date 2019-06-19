@@ -7,13 +7,12 @@ function dateToString() {
     return new Date().toISOString();
 }
 
-
-function deleteOldRecipe(partition, sort, id) {
+function deleteOldRecipe(lastModifiedDate, id) {
     const deleteParams = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            sharedKey: partition,
-            lastModifiedDate: sort
+            partitionKey: process.env['RECIPES_PARTITION'], //recipe
+            sort: lastModifiedDate
         },
         ConditionExpression: "#id = :v_id",
         ExpressionAttributeNames: {
@@ -43,7 +42,7 @@ function deleteOldRecipe(partition, sort, id) {
 async function patchRecipe(lastModifiedDate, id, fileName, isThumbnail = false) {
     const date = dateToString();
 
-    let oldRecipe = await deleteOldRecipe(process.env['SHARED_KEY'], lastModifiedDate, id);
+    let oldRecipe = await deleteOldRecipe(lastModifiedDate, id);
 
     if(!oldRecipe.hasOwnProperty('foodFiles')) {
         oldRecipe['foodFiles'] = [fileName];
@@ -53,6 +52,7 @@ async function patchRecipe(lastModifiedDate, id, fileName, isThumbnail = false) 
 
     if(isThumbnail !== false)
         oldRecipe.thumbnail = fileName;
+    oldRecipe.sort = date;
     oldRecipe.lastModifiedDate = date;
 
     const putRecipeParams = {
@@ -77,25 +77,17 @@ async function patchRecipe(lastModifiedDate, id, fileName, isThumbnail = false) 
 }
 
 
-exports.handler = async (event, context) => {
+exports.handler = async (event) => {
     try {
         console.log(event);
-        const id = event.id;
-        const fileName = event.fileName;
-        const lastModifiedDate = event.lastModifiedDate;
-        let isThumbnail = false;
-        if (event.thumbnail !== undefined) {
-            isThumbnail = event.thumbnail;
-        }
+        const { id, fileName, lastModifiedDate, isThumbnail} = event;
         const updatedRecipeItem = await patchRecipe(lastModifiedDate, id, fileName, isThumbnail);
         //let updatedRecipeItem = await updateItemInRecipes({'id': id, 'fileName': fileName});
         
         console.log("recipe updated successfully.\n" + JSON.stringify(updatedRecipeItem));
-        context.done();
+        return;
     } catch(err) {
         console.log("error when updating recipe.\n" + err);
-        //console.log("deleting file from bucket...");
-        //await deleteFromS3(bucket, uploadedName);
-        context.done(err);
+        return err;
     }
 };

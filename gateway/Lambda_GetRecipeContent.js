@@ -13,15 +13,15 @@ function setResponse(status, body){
 }
 
 /**
- * @param {string} sortKey - { name: lastModified, value: the recipe id }
+ * @param {string} recipeId - the recipe's id
  * @returns {Promise<string>} content of the recipe
  */
-function getRecipeContent(sortKey) {
+function getRecipeContent(recipeId) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            "sharedKey": process.env['CONTENT_KEY'],
-            "lastModifiedDate": sortKey
+            partitionKey: process.env['CONTENT_PARTITION'],
+            sort: recipeId // recipe id
         }
         /* ProjectionExpression: "#html",
         ExpressionAttributeNames: {
@@ -50,8 +50,7 @@ function getRecipeContent(sortKey) {
 }
 
 exports.handler = async function(event, context, callback) {
-    //let id = undefined, lastModifiedDate = undefined;
-    //console.log(event['body']);
+    //console.log(JSON.stringify(event.body));
 
     try {
         if (event['pathParameters'] && event['pathParameters']['id']) {

@@ -80,7 +80,7 @@ function uploadThumbnail(fileName, data) {
 }
 
 function deleteFromS3(bucket, key) {
-    let params = {
+    const params = {
         Bucket: bucket, 
         Key: key
     };
@@ -140,7 +140,7 @@ exports.handler = async (event, context) => {
         //const uploadRes = await uploadThumbnail(event.fileName, uploadReq);
         //console.log("upload response: \n" + uploadRes);
 
-        if(event.invokeOnComplete != undefined)
+        if(event.invokeOnComplete)
             await invokeNextLambda(event.invokeOnComplete, event.invokeOnCompletePayload);
 
         context.done();

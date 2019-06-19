@@ -11,11 +11,11 @@ function dateToString() {
 function createUser(user_name, user_email) {
     const date = dateToString();
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Item: {
-            //hash: process.env['APP_NAME'], //Recipes
-            id: user_name,
-            username: user_name,
+            partitionKey: process.env['USERS_PARTITION'],
+            sort: user_name,
+            // name: user_name,
             confirmed: false,
             email: user_email,
             creationDate: date,
@@ -43,11 +43,12 @@ exports.handler = async (event, context, callback) => {
     console.log(JSON.stringify(event));
     try {
         if(event.triggerSource === "PreSignUp_AdminCreateUser") {
-             await createUser(event.userName, event.request.userAttributes.email);
-        callback(null, event);
+            await createUser(event.userName, event.request.userAttributes.email);
+            callback(null, event);
         } else
             throw "You cannot create users!";
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));
+        callback(err);
     }
 };

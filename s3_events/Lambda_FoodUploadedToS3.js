@@ -8,13 +8,13 @@ const s3 = new AWS.S3();
 function getQueriedRecipe(recipeId) {
     const quey_params = {
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "sharedKey = :v_key",
+        KeyConditionExpression: "partition = :v_key",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
         },
         ExpressionAttributeValues: {
-            ":v_key": process.env['SHARED_KEY'],
+            ":v_key": process.env['RECIPES_PARTITION'],
             ":v_id": recipeId
         },
         ReturnConsumedCapacity: "TOTAL"

@@ -55,7 +55,7 @@ const queryStringParameters = {
     likeSubscription: "likes"
 };
 
-function getUserId(token){
+function getUser(token){
     const params = {
         AccessToken: token
     };
@@ -67,7 +67,7 @@ function getUserId(token){
             }
             else {
                 console.log(data); // successful response
-                resolve(data.UserAttributes.find(attr => attr.Name === 'sub').Value);
+                resolve(data.Username);
             }    
         });
     });
@@ -75,20 +75,17 @@ function getUserId(token){
 
 /**
  * get specific attributes from db:
- * id(string), username(string), devices(map), confirmed(string)
- * @param {string} userId - Id of the user in user table
+ * username(string), devices(map), confirmed(string)
+ * @param {string} username - username of the user in user table
  */
-function getUserFromDB(userId) {
+function getUserFromDB(username) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Key: {
-            //hash: process.env['APP_NAME'], //Recipes
-            id : userId
+            partitionKey: process.env['USERS_PARTITION'], // user
+            sort : username
         },
-        ProjectionExpression: "#id, username, devices, confirmed",
-        ExpressionAttributeNames: {
-            "#id": "id"
-        }
+        ProjectionExpression: "username, devices, confirmed",
     };
 
     return new Promise((resolve, reject) => {
@@ -102,7 +99,7 @@ function getUserFromDB(userId) {
                 if(data.Item === undefined)
                     return reject({
                         code: 404, // Not Found
-                        message: "user not found! " + userId
+                        message: "user not found! " + username
                     });    
                 resolve(data.Item);
             }
@@ -111,12 +108,12 @@ function getUserFromDB(userId) {
 }
 
 // update(using SET) only devices(map) attribute in db
-function updateUser(user) {
+function updateUserDevices(user) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Key: {
-            //hash: process.env['APP_NAME'], //Recipes
-            id: user.id
+            partitionKey: process.env['USERS_PARTITION'], // user
+            sort: user.sort
         },
         UpdateExpression: "SET devices = :devicesValue",
         ExpressionAttributeValues: {
@@ -249,9 +246,9 @@ exports.handler = async (event, context, callback) => {
                 message: "No subscription provided"
             };
         //Retreive user record from db
-        const userId = await getUserId(event['headers']['Authorization']);      
+        const username = await getUser(event['headers']['Authorization']);      
 
-        const user = await getUserFromDB(userId);
+        const user = await getUserFromDB(username);
  
         if(user.devices === undefined || user.devices[deviceId] === undefined) {
             throw {
@@ -327,7 +324,7 @@ exports.handler = async (event, context, callback) => {
         }
         // update user object in memory and then update it in db
         user.devices[deviceId] = deviceAttributes;
-        await updateUser(user);
+        await updateUserDevices(user);
 
         //#endregion Subscriptions
 

@@ -30,9 +30,9 @@ function dateToString() {
 }
 
 function getUser(token){
-    let params = {
+    const params = {
         AccessToken: token
-      };
+    };
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
@@ -41,10 +41,7 @@ function getUser(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve({
-                    "username": data.Username,
-                    "sub": data.UserAttributes.find(attr => attr.Name === 'sub').Value
-                });
+                return resolve(data.Username);
             }    
         });
     });
@@ -53,13 +50,13 @@ function getUser(token){
 function getQueriedRecipe(recipeId) {
     const quey_params = {
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "sharedKey = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
-          "#id":  "id",
+          "#id":  "id"
         },
         ExpressionAttributeValues: {
-            ":v_key": process.env['SHARED_KEY'],
+            ":v_key": process.env['RECIPES_PARTITION'],
             ":v_id": recipeId
         },
         ReturnConsumedCapacity: "TOTAL"
@@ -115,13 +112,17 @@ function postComment(recipeId, comment, username, date) {
 
 //#region SNS Methods
 
-function getUserFromDB(userId) {
+function getUserFromDB(username) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Key: {
-            "id" : userId
+            partitionKey: process.env['USERS_PARTITION'],
+            sort : username
         },
-        ProjectionExpression: "username, devices"
+        ProjectionExpression: "#username, devices",
+        ExpressionAttributeNames: {
+            "#username": "sort"
+        }
     };
 
     return new Promise((resolve, reject) => {
@@ -133,7 +134,7 @@ function getUserFromDB(userId) {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
-                    return reject("user not found, " + userId);
+                    return reject("user not found, " + username);
                 resolve(data.Item);
             }
         });
@@ -162,6 +163,7 @@ function invokePublishLambda(payload) {
     });
 }
 
+// push notification to the uploader of this recipe (recipeUploader) about new comment by a user (someUser)
 async function handlePushNotifications(id, someUser) {
     const recipe = await getQueriedRecipe(id);
     const recipeUploader = await getUserFromDB(recipe.uploader);
@@ -201,9 +203,9 @@ exports.handler = async (event, context, callback) => {
         }
 
         const request = JSON.parse(event['body']);
-        const { username, sub } = await getUser(event['headers']['Authorization']);
+        const username = await getUser(event['headers']['Authorization']);
 
-        await postComment(id, request['comment'], sub, dateToString());
+        await postComment(id, request['comment'], username, dateToString());
         posted = true;
         //console.log('results, ' +  JSON.stringify(results));
 
@@ -228,5 +230,4 @@ exports.handler = async (event, context, callback) => {
             }   
         }
     }
-
 };

@@ -9,7 +9,7 @@ const pathParameters = {
     device: "device"
 };
 
-function getUserId(token){
+function getUser(token){
     const params = {
         AccessToken: token
     };
@@ -21,19 +21,23 @@ function getUserId(token){
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.UserAttributes.find(attr => attr.Name === 'sub').Value);
+                return resolve(data.Username);
             }    
         });
     });
 }
 
-function getUserFromDB(userId) {
+function getUserFromDB(username) {
     const params = {
-        TableName: process.env['USERS_TABLE'],
+        TableName: process.env['RECIPE_TABLE'],
         Key: {
-            id: userId
+            partitionKey: process.env['USERS_PARTITION'], // user
+            sort: username
         },
-        ProjectionExpression: "username, devices, favorites"
+        ProjectionExpression: "#username, devices, favorites",
+        ExpressionAttributeNames: {
+            "#username": "sort"
+        }
     };
 
     return new Promise((resolve, reject) => {
@@ -61,9 +65,9 @@ exports.handler = async (event, context, callback) => {
             throw "request must contain deviceId";
         }
 
-        const userId = await getUserId(event['headers']['Authorization']);       
+        const username = await getUser(event['headers']['Authorization']);       
 
-        const user = await getUserFromDB(userId);
+        const user = await getUserFromDB(username);
         const response = {
             "favorites": Object.keys(user.favorites)
         };
@@ -86,6 +90,9 @@ exports.handler = async (event, context, callback) => {
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));
         //callback(err);
+        if (err.message) {
+            err = err.message;
+        }
         callback(null, { 
             statusCode: 500, 
             body: JSON.stringify({

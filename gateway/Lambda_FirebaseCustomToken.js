@@ -32,7 +32,7 @@ function getUser(token) {
             }
             else {
                 console.log(data); // successful response
-                return resolve(data.UserAttributes.find(attr => attr.Name === 'sub').Value);
+                return resolve(data.Username);
             }    
         });
     });
@@ -48,15 +48,15 @@ function createCustomToken(userId) {
 
 exports.handler = async (event, context, callback) => {
     try {
-        const userId = await getUser(event['headers']['Authorization']);//[0]['AccessToken']);
+        const username = await getUser(event['headers']['Authorization']);//[0]['AccessToken']);
 
-        const newToken = await createCustomToken(userId);
+        const newToken = await createCustomToken(username);
     
         console.log('results, ' +  JSON.stringify(newToken));
 
         callback(null, setResponse(200, JSON.stringify(newToken)));
     }
     catch(err) {
-        callback(null, setResponse(500, JSON.stringify({"message": err})));
+        callback(null, setResponse(500, JSON.stringify(err)));
     }
 };

@@ -13,12 +13,12 @@ function setResponse(status, body){
     };
 }
 
-function getRecipe(sortKey) {
+function getRecipe(lastModifiedDate) {
     const get_params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            "sharedKey": process.env['SHARED_KEY'],
-            "lastModifiedDate": sortKey
+            partitionKey: process.env['RECIPES_PARTITION'],
+            sort: lastModifiedDate // lastModifiedDate
         }
     };
 
@@ -40,13 +40,13 @@ function getQueriedRecipe(recipeId) {
     const get_params = {
         /* Limit: 2, */
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "sharedKey = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
         },
         ExpressionAttributeValues: {
-            ":v_key": process.env['SHARED_KEY'],
+            ":v_key": process.env['RECIPES_PARTITION'],
             ":v_id": recipeId
         },
         ReturnConsumedCapacity: "TOTAL"
@@ -150,14 +150,14 @@ exports.handler = async (event, context, callback) => {
         const numOfFiles = parseInt(queryParams['numOfFiles'], 10);
     
         let recipeItem = undefined;
-        if(lastModifiedDate !== undefined) {
+        if(lastModifiedDate) {
             recipeItem = await getRecipe(lastModifiedDate);
         } 
-        if(recipeItem === undefined) {
+        if(!recipeItem) {
             recipeItem = await getQueriedRecipe(id);
         }
 
-        if(recipeItem !== undefined) {
+        if(recipeItem) {
             console.log('generating names');
             let fileNames = generateFileNames(numOfFiles, recipeItem, queryParams['extension']);
             console.log("files\n" + fileNames);
