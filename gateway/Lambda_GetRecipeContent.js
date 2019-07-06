@@ -39,11 +39,11 @@ function getRecipeContent(recipeId) {
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if (data.Item === undefined) {
                     return reject({
-                        status: 404, // Not Found
+                        statusCode: 404, // Not Found
                         message: "recipe content not found"
                     });
                 }
-                return resolve(data.Item.html);
+                return resolve(data.Item);
             }
         });
     });
@@ -55,14 +55,24 @@ exports.handler = async function(event, context, callback) {
     try {
         if (event['pathParameters'] && event['pathParameters']['id']) {
             const { id } = event['pathParameters'];
-            const content = await getRecipeContent(id); 
-    
-            // recipe without html content will return null object
-            // return the html content represented as string
-            callback(null, setResponse(200 , content));
+            const { lastModifiedDate } = event['queryStringParameters'] ? event['queryStringParameters']['lastModifiedDate'] : undefined;
+            const content = await getRecipeContent(id);
+            if (lastModifiedDate) {
+                if (content.lastModifiedContent > lastModifiedDate) {
+                    // new content available
+                    callback(null, setResponse(200 , content.html));
+                } else {
+                    // content not modified
+                    callback(null, setResponse(304 , ''));
+                }
+            } else {
+                // recipe without html content will return null object
+                // return the html content represented as string
+                callback(null, setResponse(200 , content.html));
+            }
         } else {
             throw {
-                status: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "request must contain recipe id"
             };
         }
@@ -73,11 +83,11 @@ exports.handler = async function(event, context, callback) {
     catch(err) {
         //callback(err);
         //callback(null, setResponse(500, err));
-        const { status, message } = err;
-        if (message !== undefined && status !== undefined) {
-            callback(null, setResponse(status, JSON.stringify({"message": message})));
+        const { statusCode, message } = err;
+        if (message && statusCode) {
+            callback(null, setResponse(statusCode, JSON.stringify(message)));
         } else {
-            callback(null, setResponse(500, JSON.stringify({"message": err})));
+            callback(null, setResponse(500, JSON.stringify(err)));
         }
     }
 };

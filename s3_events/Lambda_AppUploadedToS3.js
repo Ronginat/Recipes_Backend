@@ -2,13 +2,55 @@ const AWS = require('aws-sdk');
 
 AWS.config.update({region: process.env['REGION']});
 
+const docClient = new AWS.DynamoDB.DocumentClient();
+
 const lambda = new AWS.Lambda({
     region: AWS.config.region,
     apiVersion: '2015-03-31'
 });
 
 function decodeVersion(name) {
-    return name.split("/")[1].split(".")[0]; // change in the future
+    const fileWithExtension = name.split("/")[1];
+    const versionWithExtension = fileWithExtension.split("_v")[1];
+    const version = versionWithExtension.split(".");
+
+    version.splice(-1, 1);
+    return version.join('.');
+
+    //return name.split("/")[1].split(".")[0]; // change in the future
+}
+
+function dateToString() {
+    return new Date().toISOString();
+}
+
+function putNewVersionInDB(app) {
+    const date = dateToString();
+
+    const params = {
+        TableName: process.env['RECIPE_TABLE'],
+        Item: {
+            'partitionKey': process.env['APP_PARTITION'],
+            'sort': date,
+            'name' : app.split("/")[1],
+            'version': decodeVersion(app),
+            'minSdk': parseInt(process.env['MIN_SDK'], 10)
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        docClient.put(params, function(err, data) {
+            if (err) {
+                console.log("Error app version PUT", err);
+                return reject(err);
+            } 
+            else {
+                console.log("Success app version PUT", data);
+                return resolve(data.Item);
+            }
+        });
+    });
 }
 
 function invokePublishLambda(version) {
@@ -45,7 +87,11 @@ exports.handler = async (event, context, callback) => {
     //const bucket = record['bucket']['name'];
 
     try {
-        await invokePublishLambda(decodeVersion(uploadedName));
+        //await invokePublishLambda(decodeVersion(uploadedName));
+        await Promise.all([
+            invokePublishLambda(decodeVersion(uploadedName)),
+            putNewVersionInDB(uploadedName)
+        ]);
         
         callback(null);
 

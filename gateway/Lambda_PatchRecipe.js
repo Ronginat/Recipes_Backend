@@ -167,6 +167,7 @@ async function patchRecipe(request, oldRecipe, username, date) {
     console.log('updated recipe: ' + JSON.stringify(oldRecipe));
     await deleteOldRecipe(process.env['RECIPE_PARTITION'], oldRecipe.lastModifiedDate, oldRecipe.id);
 
+    oldRecipe.sort = date;
     oldRecipe.lastModifiedDate = date;
     
     const putRecipeParams = {
