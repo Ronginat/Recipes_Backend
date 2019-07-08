@@ -9,6 +9,10 @@ const lambda = new AWS.Lambda({
     apiVersion: '2015-03-31'
 });
 
+/**
+ * Input format: app_versions/appName_v1.0.apk
+ * @param {string} name - path and name of the app file
+ */
 function decodeVersion(name) {
     const fileWithExtension = name.split("/")[1];
     const versionWithExtension = fileWithExtension.split("_v")[1];
@@ -18,6 +22,10 @@ function decodeVersion(name) {
     return version.join('.');
 
     //return name.split("/")[1].split(".")[0]; // change in the future
+}
+
+function decodePlatform(name) {
+    return "android"; // may change in the future
 }
 
 function dateToString() {
@@ -30,10 +38,11 @@ function putNewVersionInDB(app) {
     const params = {
         TableName: process.env['RECIPE_TABLE'],
         Item: {
-            'partitionKey': process.env['APP_PARTITION'],
+            'partitionKey': process.env['APP_PARTITION'], // app
             'sort': date,
             'name' : app.split("/")[1],
             'version': decodeVersion(app),
+            'platform': decodePlatform(app),
             'minSdk': parseInt(process.env['MIN_SDK'], 10)
         }
     };
@@ -96,7 +105,7 @@ exports.handler = async (event, context, callback) => {
         callback(null);
 
     } catch(err) {
-        console.log("error when sending appUpdate push notification.\n" + err);
+        console.log("err ", JSON.stringify(err));
         callback(err);
     }
 };

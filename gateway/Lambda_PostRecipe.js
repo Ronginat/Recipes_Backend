@@ -224,10 +224,10 @@ exports.handler = async (event, context, callback) => {
             updateUserPostedRecipes(username, newId)
         ]);
         
-        callback(null, setResponse(200, JSON.stringify(results)));
+        callback(null, setResponse(201, JSON.stringify(results))); // Created
         
     } catch(err) {
-        console.log('got error, ' + err);
-        callback(null, setResponse(500, JSON.stringify(err)));
+        console.log('got error, ' + JSON.stringify(err));
+        callback(null, setResponse(500, JSON.stringify(err.message ? err.message : err)));
     }
 };

@@ -160,7 +160,7 @@ function subscribeToTopic(topic, endpoint, platform) {
             break;
         default:
             throw {
-                statusCode: 400, // Bad Request
+                statusCode: 500, // Internal Server Error
                 message: "can't subscribe with platform " + platform
             };
     }
@@ -191,7 +191,7 @@ function createEndpoint(token, username, platform) {
             break;
         default:
             throw {
-                statusCode: 400, // Bad Request
+                statusCode: 500, // Internal Server Error
                 message: "platform " + platform + " is not supported!"
             };
     }
@@ -236,7 +236,7 @@ exports.handler = async (event, context, callback) => {
     console.log("Received event:", JSON.stringify(event, null, 2));
 
     try {
-        let token = undefined, deviceId = undefined, platform = platforms.android;
+        let token = undefined, deviceId = undefined, platform = platforms.android, version = undefined, appVersion= undefined;
 
         if(event['pathParameters'][pathParameters.token] && event['pathParameters'][pathParameters.device]) {
             token = event['pathParameters'][pathParameters.token];
@@ -248,15 +248,23 @@ exports.handler = async (event, context, callback) => {
             };
         }
 
-        if(event['queryStringParameters'] && event['queryStringParameters']['platform']) {
-            platform = event['queryStringParameters']['platform'];
+        if(event['queryStringParameters']) {
+            if (event['queryStringParameters']['platform']) {
+                platform = event['queryStringParameters']['platform'];
+            }
+            if(event['queryStringParameters']['version']) {
+                version = event['queryStringParameters']['version'];
+            }
+            if(event['queryStringParameters']['app_version']) {
+                appVersion = event['queryStringParameters']['app_version'];
+            }
         }
 
         const username = await getUser(event['headers']['Authorization']);
         const user = await getUserFromDB(username);
         if (!user) {
             throw {
-                statusCode: 404,
+                statusCode: 500, // Internal Server Error
                 message: "User not found"
             };
         }
@@ -270,6 +278,8 @@ exports.handler = async (event, context, callback) => {
         if(user.devices[deviceId] === undefined) {
             user.devices[deviceId] = {
                 platform: platform,
+                version: version,
+                appVersion: appVersion,
                 token: token,
                 endpoint: await createEndpoint(token, username, platform)
             };
@@ -306,11 +316,15 @@ exports.handler = async (event, context, callback) => {
     } catch(err) {
         console.log(JSON.stringify(err));
         //callback(err);
-        const { statusCode, message } = err;
+        callback(null, setErrorResponse(
+            err.statusCode && err.statusCode === 400 ? 400 : 500, 
+            JSON.stringify(err.message ? err.message : err))
+        );
+        /* const { statusCode, message } = err;
         if (message !== undefined && statusCode !== undefined) {
             callback(null, setResponse(statusCode, JSON.stringify(message)));
         } else {
             callback(null, setResponse(500, JSON.stringify(err)));
-        }
+        } */
     }    
 };

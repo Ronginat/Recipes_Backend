@@ -74,7 +74,10 @@ function getQueriedRecipe(recipeId) {
                     console.log('Oh no! there are more recipes with ' + recipeId + ' id');
                 }
                 if(data.Count === 0 || data.Items.length === 0) {
-                    return reject("recipe not found");
+                    return reject({
+                        statusCode: 500,
+                        message: "recipe not found"
+                    });
                 }
                 return resolve(data.Items[0]);
             }
@@ -134,7 +137,10 @@ function getUserFromDB(username) {
                 // print all the data
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
-                    return reject("user not found, " + username);
+                    return reject({
+                        statusCode: 500,
+                        message: "user not found, " + username
+                    });
                 resolve(data.Item);
             }
         });
@@ -197,7 +203,7 @@ exports.handler = async (event, context, callback) => {
             id = event['pathParameters']['id'];
         } else {
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "request must contain recipe id"
             };
         }
@@ -209,7 +215,7 @@ exports.handler = async (event, context, callback) => {
         posted = true;
         //console.log('results, ' +  JSON.stringify(results));
 
-        callback(null, setResponse(200));
+        callback(null, setResponse(201)); // Created
 
         //#region PublishSNS
         
@@ -219,15 +225,18 @@ exports.handler = async (event, context, callback) => {
     }
     catch(err) {
         //callback(err);
-        //callback(null, setResponse(500, err));
-        console.log("comment posted ? " + posted + " catch error, " + err);
+        console.log("comment posted ? " + posted + " catch error, " + JSON.stringify(err));
         if(!posted) {
-            const { code, message } = err;
+            callback(null, setErrorResponse(
+                err.statusCode && err.statusCode === 400 ? 400 : 500, 
+                JSON.stringify(err.message ? err.message : err))
+            );
+            /* const { code, message } = err;
             if (message !== undefined && code !== undefined) {
                 callback(null, setErrorResponse(code, JSON.stringify({"message": message})));
             } else {
                 callback(null, setErrorResponse(500, JSON.stringify({"message": err})));
-            }   
+            }    */
         }
     }
 };
