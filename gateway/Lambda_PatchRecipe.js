@@ -51,7 +51,7 @@ function getRecipe(sortKey) {
     const get_params = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            partitionKey: process.env['RECIPE_PARTITION'],
+            partitionKey: process.env['RECIPES_PARTITION'],
             sort: sortKey // lastModifiedDate
         }
     };
@@ -80,7 +80,7 @@ function getQueriedRecipe(recipeId) {
           "#id":  "id",
         },
         ExpressionAttributeValues: {
-            ":v_key": process.env['RECIPE_PARTITION'],
+            ":v_key": process.env['RECIPES_PARTITION'],
             ":v_id": recipeId
         },
         /*ReturnConsumedCapacity: "TOTAL"*/
@@ -99,7 +99,7 @@ function getQueriedRecipe(recipeId) {
                 }
                 if(data.Count === 0 || data.Items.length === 0) {
                     return reject({
-                        code: 404, // Not Found
+                        statusCode: 500, // Not Found
                         message: "recipe not found!"
                     });
                 }
@@ -109,11 +109,11 @@ function getQueriedRecipe(recipeId) {
     });
 }
 
-function deleteOldRecipe(partition, lastModified, id) {
+function deleteOldRecipe(lastModified, id) {
     const deleteParams = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
-            partitionKey: partition,
+            partitionKey: process.env['RECIPES_PARTITION'],
             sort: lastModified // lastModifiedDate
         },
         ConditionExpression: "#id = :v_id",
@@ -165,7 +165,7 @@ async function patchRecipe(request, oldRecipe, username, date) {
     }
 
     console.log('updated recipe: ' + JSON.stringify(oldRecipe));
-    await deleteOldRecipe(process.env['RECIPE_PARTITION'], oldRecipe.lastModifiedDate, oldRecipe.id);
+    await deleteOldRecipe(oldRecipe.lastModifiedDate, oldRecipe.id);
 
     oldRecipe.sort = date;
     oldRecipe.lastModifiedDate = date;
@@ -208,7 +208,7 @@ function getUserFromDB(username, withFavorites) {
     };
 
     if(withFavorites)
-        params.ProjectionExpression = "username, devices, favorites";
+        params.ProjectionExpression = "#username, devices, favorites";
 
     return new Promise((resolve, reject) => {
         docClient.get(params, (err, data) => {
@@ -220,7 +220,7 @@ function getUserFromDB(username, withFavorites) {
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
                     return reject({
-                        code: 404, // Not Found
+                        statusCode: 500, // Not Found
                         message: "user not found, " + username
                     });
                 resolve(data.Item);
@@ -321,7 +321,7 @@ exports.handler = async (event, context, callback) => {
             id = event['pathParameters']['id'];
         } else {
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "request must contain recipe id"
             };
         }
@@ -334,7 +334,7 @@ exports.handler = async (event, context, callback) => {
         for(let key in request) {
             if(forbidPatch.includes(key)) {
                 throw {
-                    code: 400, // Bad Request
+                    statusCode: 400, // Bad Request
                     message: "requested property cannot be changed. " + key
                 };
             }
@@ -348,7 +348,7 @@ exports.handler = async (event, context, callback) => {
                 } 
                 else { // attribute not exists
                     throw {
-                        code: 400, // Bad Request
+                        statusCode: 400, // Bad Request
                         message: "requested property not exists. " + key
                     };
                 }
@@ -356,16 +356,16 @@ exports.handler = async (event, context, callback) => {
         }
 
         let oldRecipe = undefined;
-        if(lastModifiedDate !== undefined) {
+        if(lastModifiedDate) {
             oldRecipe = await getRecipe(lastModifiedDate);
         } 
-        if(oldRecipe === undefined) {
+        if(!oldRecipe) {
             oldRecipe = await getQueriedRecipe(id);
         }
         console.log("old recipe, " + oldRecipe);
-        if(oldRecipe === undefined) {
+        if(!oldRecipe) {
             throw {
-                code: 404, // Unauthorized
+                statusCode: 500, // Internal Server Error
                 message: "recipe not found!"
             };
         }
@@ -378,7 +378,7 @@ exports.handler = async (event, context, callback) => {
 
             if(username !== oldRecipe.uploader || !admins.includes(username)) {
                 throw {
-                    code: 401, // Unauthorized
+                    statusCode: 500, // Unauthorized
                     message: "not authorized to change requested attributes!"
                 };
             }
@@ -412,11 +412,15 @@ exports.handler = async (event, context, callback) => {
     catch(err) {
         //callback(err);
         //callback(null, setResponse(500, err));
-        const { code, message } = err;
+        /* const { code, message } = err;
         if (message !== undefined && code !== undefined) {
             callback(null, setResponse(code, JSON.stringify({"message": message})));
         } else {
             callback(null, setResponse(500, JSON.stringify({"message": err})));
-        }
+        } */
+        callback(null, setResponse(
+            err.statusCode && err.statusCode === 400 ? 400 : 500, 
+            JSON.stringify(err.message ? err.message : err))
+        );
     }
 };

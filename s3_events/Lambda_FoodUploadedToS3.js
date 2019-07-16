@@ -8,7 +8,7 @@ const s3 = new AWS.S3();
 function getQueriedRecipe(recipeId) {
     const quey_params = {
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "partition = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
@@ -147,21 +147,23 @@ exports.handler = async (event) => {
             'fileName': fileName,
         };
 
+        // call next lambda to insert the image to foodFiles
+        await invokeFoodProcessedUpdateRecipe(updateRecipePayload);
+
         if (!recipe.hasOwnProperty('foodFiles')) { // if (!('foodFiles' in recipe))
-            updateRecipePayload['thumbnail'] = true;
+            const generatorOnCompletePayload = { ...updateRecipePayload };
+            generatorOnCompletePayload['thumbnail'] = true;
             const thumbnailGeneratorPayload = {
                 'bucket': bucket,
                 'filePath': uploadedName,
                 'fileName': fileName,
                 'targetDir': 'thumbnails',
                 'invokeOnComplete': process.env['UPDATE_RECIPE_LAMBDA'],
-                'invokeOnComletePayload': updateRecipePayload
+                'invokeOnCompletePayload': generatorOnCompletePayload
             };
             await invokeThumbnailGenerator(thumbnailGeneratorPayload);
             console.log("finish thumbnail lambda");
-        } else {
-            await invokeFoodProcessedUpdateRecipe(updateRecipePayload);
-        }
+        }        
         
         console.log("exit food uploaded lambda");
 

@@ -98,7 +98,7 @@ function getUserFromDB(username) {
                 console.log("Get succeeded. ", JSON.stringify(data));
                 if(data.Item === undefined)
                     return reject({
-                        code: 404, // Not Found
+                        statusCode: 500, // Not Found
                         message: "user not found! " + username
                     });    
                 resolve(data.Item);
@@ -222,7 +222,7 @@ exports.handler = async (event, context, callback) => {
             deviceId = event['pathParameters'][pathParameters.device];
         } else {
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "request must contain deviceId"
             };
         }
@@ -242,7 +242,7 @@ exports.handler = async (event, context, callback) => {
         }
         else
             throw {
-                code: 400, // Bad Request
+                statusCode: 400, // Bad Request
                 message: "No subscription provided"
             };
         //Retreive user record from db
@@ -250,9 +250,9 @@ exports.handler = async (event, context, callback) => {
 
         const user = await getUserFromDB(username);
  
-        if(user.devices === undefined || user.devices[deviceId] === undefined) {
+        if(!user.devices || !user.devices[deviceId]) {
             throw {
-                code: 500, // Internal Server Error
+                statusCode: 500, // Internal Server Error
                 message: "Device not registered!"
             };
         }
@@ -262,7 +262,7 @@ exports.handler = async (event, context, callback) => {
         //#region Subscriptions
 
         // each flag means that the client wants to change the relevant subscription
-        if(recipeFlag !== undefined) {
+        if(recipeFlag) {
             switch(recipeFlag) {
                 case subscription.subscribe:
                     if(deviceAttributes.subscriptions.newRecipes === undefined) {
@@ -285,13 +285,13 @@ exports.handler = async (event, context, callback) => {
                     break;
                 default:
                     throw {
-                        code: 400, // Bad Request
+                        statusCode: 400, // Bad Request
                         message: "Specify what to do with new recipe subscription!"
                     };
             }
         }
         
-        if(commentFlag !== undefined) {
+        if(commentFlag) {
             switch(commentFlag) {
                 case subscription.subscribe:
                     deviceAttributes.subscriptions.comments = true;
@@ -301,7 +301,7 @@ exports.handler = async (event, context, callback) => {
                     break;
                 default:
                     throw {
-                        code: 400, // Bad Request
+                        statusCode: 400, // Bad Request
                         message: "Specify what to do with comments subscription!"
                     };
             }
@@ -317,7 +317,7 @@ exports.handler = async (event, context, callback) => {
                     break;
                 default:
                     throw {
-                        code: 400, // Bad Request
+                        statusCode: 400, // Bad Request
                         message: "Specify what to do with likes subscription!"
                     };
             }
@@ -336,7 +336,7 @@ exports.handler = async (event, context, callback) => {
         console.log("CATCH, " + JSON.stringify(err));
         //callback(err);
 
-        const { code, message } = err;
+        /* const { code, message } = err;
         if (message !== undefined && code !== undefined) {
             callback(null, { 
                 statusCode: code, 
@@ -351,6 +351,11 @@ exports.handler = async (event, context, callback) => {
                     "message": err
                 })
             });
-        }
+        } */
+
+        callback(null, {
+            statusCode: err.statusCode && err.statusCode === 400 ? 400 : 500, 
+                body: JSON.stringify(err.message ? err.message : err)
+        });
     }
 };

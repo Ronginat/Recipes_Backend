@@ -5,7 +5,7 @@ const s3 = new AWS.S3();
 
 const admin = require('firebase-admin');
 
-const serviceAccount = require('serviceAccount.json');
+const serviceAccount = require('/opt/nodejs/serviceAccount.json');
 
 /**
  * Triggered when image uploaded to /thumbnails in bucket.

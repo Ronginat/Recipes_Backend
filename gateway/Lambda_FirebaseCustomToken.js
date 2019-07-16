@@ -4,7 +4,7 @@ const cognitoidentityserviceprovider = new AWS.CognitoIdentityServiceProvider();
 
 const admin = require('firebase-admin');
 
-const serviceAccount = require('./serviceAccount.json');
+const serviceAccount = require('opt/nodejs/serviceAccount.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),

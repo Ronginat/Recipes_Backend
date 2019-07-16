@@ -22,11 +22,14 @@ function getRecipeContent(recipeId) {
         Key: {
             partitionKey: process.env['CONTENT_PARTITION'],
             sort: recipeId // recipe id
-        }
-        /* ProjectionExpression: "#html",
+        },
+        ProjectionExpression: "#id, #name, #date, #html",
         ExpressionAttributeNames: {
+            "#id": "id",
+            "#name": "name",
+            "#date": "lastModifiedDate",
             "#html":  "html"
-        } */
+        }
     };
 
     return new Promise((resolve, reject) => {
@@ -55,12 +58,12 @@ exports.handler = async function(event, context, callback) {
     try {
         if (event['pathParameters'] && event['pathParameters']['id']) {
             const { id } = event['pathParameters'];
-            const { lastModifiedDate } = event['queryStringParameters'] ? event['queryStringParameters']['lastModifiedDate'] : undefined;
+            const { lastModifiedDate } = event['queryStringParameters'] ? event['queryStringParameters'] : undefined;
             const content = await getRecipeContent(id);
             if (lastModifiedDate) {
-                if (content.lastModifiedContent > lastModifiedDate) {
+                if (content.lastModifiedDate > lastModifiedDate) {
                     // new content available
-                    callback(null, setResponse(200 , content.html));
+                    callback(null, setResponse(200 , JSON.stringify(content)));
                 } else {
                     // content not modified
                     callback(null, setResponse(304 , ''));
@@ -68,7 +71,7 @@ exports.handler = async function(event, context, callback) {
             } else {
                 // recipe without html content will return null object
                 // return the html content represented as string
-                callback(null, setResponse(200 , content.html));
+                callback(null, setResponse(200 , JSON.stringify(content)));
             }
         } else {
             throw {
@@ -83,11 +86,15 @@ exports.handler = async function(event, context, callback) {
     catch(err) {
         //callback(err);
         //callback(null, setResponse(500, err));
-        const { statusCode, message } = err;
+        /* const { statusCode, message } = err;
         if (message && statusCode) {
             callback(null, setResponse(statusCode, JSON.stringify(message)));
         } else {
             callback(null, setResponse(500, JSON.stringify(err)));
-        }
+        } */
+        callback(null, setResponse(
+            err.statusCode && !err.code ? err.statusCode : 500, // err.code thrown by external aws libraries
+            JSON.stringify(err.message ? err.message : err))
+        );
     }
 };

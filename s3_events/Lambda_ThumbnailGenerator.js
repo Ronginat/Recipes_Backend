@@ -3,6 +3,7 @@ const gm = require("gm").subClass({imageMagick: true});
 
 AWS.config.update({region: process.env['REGION']});
 
+const lambda = new AWS.Lambda();
 const s3 = new AWS.S3();
 
 // https://github.com/sailyapp/aws-s3-lambda-thumbnail-generator
@@ -12,12 +13,12 @@ const
     THUMB_HEIGHT = 300,
     ALLOWED_FILETYPES = ['png', 'jpg', 'jpeg'];
 
-function download(fileName, dir) {
-    const srcKey = dir + '/' + fileName;
+function download(filePath/* fileName, dir */) {
+    //const srcKey = dir + '/' + fileName;
     return new Promise((resolve, reject) => {
         s3.getObject({
             Bucket: process.env['BUCKET'],
-            Key: srcKey
+            Key: filePath
           }, (err, data) => {
               if (err) reject(err);
               else resolve(data);
@@ -79,7 +80,7 @@ function uploadThumbnail(fileName, data) {
     });
 }
 
-function deleteFromS3(bucket, key) {
+/* function deleteFromS3(bucket, key) {
     const params = {
         Bucket: bucket, 
         Key: key
@@ -99,7 +100,7 @@ function deleteFromS3(bucket, key) {
         });
     });
     
-}
+} */
 
 function invokeNextLambda(lambdaName, payload) {
     const params = {
@@ -125,12 +126,12 @@ function invokeNextLambda(lambdaName, payload) {
 }
 
 exports.handler = async (event, context) => {
+    console.log(JSON.stringify(event));
     try {
-        console.log(event);
         const fileType = event.fileName.split('.')[1];
         if (!ALLOWED_FILETYPES.includes(fileType))
             throw "file extension not supported, " + event.fileName;
-        const s3_response = await download(event.fileName, event.fileDir);
+        const s3_response = await download(event.filePath/* event.fileName, event.fileDir */);
         console.log(s3_response);
 
         const uploadReq = await createThumbnail(s3_response);
@@ -146,8 +147,8 @@ exports.handler = async (event, context) => {
         context.done();
 
     } catch(err) {
-        console.log("error when generating thumbnail.\n" + err);
-        await deleteFromS3(event.bucket, event.filePath);
+        console.log(JSON.stringify(err));
+        //await deleteFromS3(event.bucket, event.filePath);
         context.done(err);
     }
 };

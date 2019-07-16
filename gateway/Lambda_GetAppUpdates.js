@@ -150,10 +150,14 @@ exports.handler = async (event, context, callback) => {
             clientApiVersion: device.version
         });
 
-        callback(null, {
+        const response = {
             statusCode: fileName ? 200 /* OK */ : 204 /* No Content */,
-            body: fileName ? JSON.stringify(signUrl(fileName)) : null
-        });
+            body: fileName ? JSON.stringify({
+                "name": fileName,
+                "url": signUrl(fileName)
+            }) : null
+        };
+        callback(null, response);
 
     } catch(err) {
         console.log("CATCH, " + JSON.stringify(err));

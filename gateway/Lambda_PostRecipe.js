@@ -85,9 +85,10 @@ function putContent(recipe) {
         Item: {
             'partitionKey': process.env['CONTENT_PARTITION'], // hash key for recipe content is static 'content'
             'sort' : recipe.id, // sort key for content is recipe id. Each recipe can hold one content record
+            'id': recipe.id, // duplicate attribute for convenience
             'name' : recipe.name,
             'html': recipe.html,
-            'lastModifiedContent': recipe.lastModifiedDate
+            'lastModifiedDate': recipe.lastModifiedDate
         }
     };
 
@@ -216,7 +217,7 @@ exports.handler = async (event, context, callback) => {
         await putContent(eventBody);
 
         results['id'] = eventBody.id;
-        results['lastModifiedDate'] = eventBody.lastModifiedContent;
+        results['lastModifiedDate'] = eventBody.lastModifiedDate;
         eventBody.uploader = username;
 
         await Promise.all([
