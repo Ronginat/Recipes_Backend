@@ -5,6 +5,10 @@ AWS.config.update({region: process.env['REGION']});
 const docClient = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 
+function dateToString() {
+    return new Date().toISOString();
+}
+
 function getQueriedRecipe(recipeId) {
     const quey_params = {
         TableName: process.env['RECIPE_TABLE'],
@@ -40,6 +44,112 @@ function getQueriedRecipe(recipeId) {
     });
 }
 
+/* function deleteOldRecipe(lastModifiedDate, id) {
+    const deleteParams = {
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            partitionKey: process.env['RECIPES_PARTITION'], //recipe
+            sort: lastModifiedDate
+        },
+        ConditionExpression: "#id = :v_id",
+        ExpressionAttributeNames: {
+            "#id": "id"
+        },
+        ExpressionAttributeValues: {
+            ":v_id": id
+        },
+        ReturnValues: "ALL_OLD"
+    };
+
+    return new Promise((resolve, reject) => {
+        // Call DynamoDB to add the item to the table
+        docClient.delete(deleteParams, function(err, data) {
+            if (err) {
+                console.log("Error recipe DELETE", JSON.stringify(err));
+                return reject(err);
+            } 
+            else {
+                console.log("Success recipe DELETE", JSON.stringify(data));
+                return resolve(data.Attributes);
+            }
+        });
+    });
+} */
+
+/**
+ * Sets foodFiles list without changing sort (lastModifiedDate) attribute.
+ * @param {string} fileName Add to foodFiles new list (using DynamoDB SET )
+ */
+function updateRecipe(lastModifiedDate, id, fileName) {
+    const params = {
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            partitionKey: process.env['RECIPES_PARTITION'],
+            sort: lastModifiedDate
+        },
+        UpdateExpression: "SET #images = :v_list",
+        ConditionExpression: "#id = :v_id",
+        ExpressionAttributeNames: {
+            "#images": "foodFiles",
+            "#id": "id"
+        },
+        ExpressionAttributeValues: {
+            ":v_list": [fileName],
+            ":v_id": id
+        },
+        ReturnValues: "ALL_NEW",
+        ReturnConsumedCapacity: "TOTAL"
+    };
+
+    return docClient.update(params).promise();
+}
+
+async function patchRecipe(oldRecipe, fileName) {
+    const date = dateToString();
+
+    // add file to foodFiles list (or create a new list)
+    if(!oldRecipe.hasOwnProperty('foodFiles')) {
+        // don't change the recipe's date, it'll be updated when the thumbnail is ready
+        return await updateRecipe(oldRecipe.sort, oldRecipe.id, fileName);
+    } else {
+        // no thumbnail will be created, so update the recipe's date now
+        const newRecipe = { ...oldRecipe };
+        newRecipe.foodFiles.push(fileName);
+        newRecipe.sort = date;
+        newRecipe.lastModifiedDate = date;
+
+        const putRecipeParams = {
+            RequestItems: {
+                recipes: [
+                    {
+                        DeleteRequest: {
+                            Key: {
+                                partitionKey: process.env['RECIPES_PARTITION'], //recipe
+                                sort: oldRecipe.sort
+                            },
+                            ConditionExpression: "#id = :v_id",
+                            ExpressionAttributeNames: {
+                                "#id": "id"
+                            },
+                            ExpressionAttributeValues: {
+                                ":v_id": oldRecipe.id
+                            },
+                        }
+                    },
+                    {
+                        PutRequest: {
+                            Item: newRecipe
+                        }
+                    }
+                ]
+            },
+            ReturnConsumedCapacity: 'TOTAL'
+        };
+
+        return await docClient.batchWrite(putRecipeParams).promise();
+    }
+}
+
 function deleteFromS3(bucket, key) {
     const params = {
         Bucket: bucket, 
@@ -61,7 +171,7 @@ function deleteFromS3(bucket, key) {
     });
 }
 
-function invokeFoodProcessedUpdateRecipe(payload) {
+/* function invokeFoodProcessedUpdateRecipe(payload) {
     const params = {
         FunctionName: process.env['UPDATE_RECIPE_LAMBDA'],
         InvocationType: 'Event',
@@ -82,7 +192,7 @@ function invokeFoodProcessedUpdateRecipe(payload) {
         });
     });
     
-}
+} */
 
 function invokeThumbnailGenerator(payload) {
     const params = {
@@ -93,13 +203,13 @@ function invokeThumbnailGenerator(payload) {
     };
 
     return new Promise((resolve, reject) => {
-        lambda.invoke(params, (err,data) => {
+        lambda.invoke(params, (err, data) => {
             if (err) {
                 console.log(err, err.stack);
                 reject(err);
             }
             else if ('FunctionError' in data) {
-                console.log(data);
+                console.log(JSON.stringify(data));
                 reject(JSON.parse(data.Payload).errorMessage);
             }
             else {
@@ -141,6 +251,10 @@ exports.handler = async (event) => {
         const fileName = decodeFileName(uploadedName);
         const recipe = await getQueriedRecipe(id);
 
+        if (!recipe) {
+            throw "recipe not found!";
+        }
+
         const updateRecipePayload = {
             'id': id,
             'lastModifiedDate': recipe.lastModifiedDate,
@@ -148,7 +262,11 @@ exports.handler = async (event) => {
         };
 
         // call next lambda to insert the image to foodFiles
-        await invokeFoodProcessedUpdateRecipe(updateRecipePayload);
+        //await invokeFoodProcessedUpdateRecipe(updateRecipePayload);
+
+        // patch the recipe
+        const output = await patchRecipe(recipe, fileName);
+        console.log('patch output', JSON.stringify(output));
 
         if (!recipe.hasOwnProperty('foodFiles')) { // if (!('foodFiles' in recipe))
             const generatorOnCompletePayload = { ...updateRecipePayload };
@@ -162,13 +280,13 @@ exports.handler = async (event) => {
                 'invokeOnCompletePayload': generatorOnCompletePayload
             };
             await invokeThumbnailGenerator(thumbnailGeneratorPayload);
-            console.log("finish thumbnail lambda");
+            console.log("thumbnail lambda invoked");
         }        
         
         console.log("exit food uploaded lambda");
 
     } catch(err) {
-        console.log("error when uploading recipe.\n" + err);
+        console.log('error', JSON.stringify(err));
         console.log("deleting file from bucket...");
         await deleteFromS3(bucket, uploadedName);
     }
