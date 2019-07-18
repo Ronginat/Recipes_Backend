@@ -7,17 +7,19 @@ function dateToString() {
     return new Date().toISOString();
 }
 
-function getQueriedRecipe(recipeId) {
+function getQueriedRecipe(recipeId, lastModifiedDate) {
     const quey_params = {
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "partitionKey = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
+          "#sort": "sort"
         },
         ExpressionAttributeValues: {
             ":v_key": process.env['RECIPES_PARTITION'],
-            ":v_id": recipeId
+            ":v_id": recipeId,
+            ":v_date": lastModifiedDate
         },
         ReturnConsumedCapacity: "TOTAL"
     };
@@ -42,7 +44,7 @@ function getQueriedRecipe(recipeId) {
     });
 }
 
-function deleteOldRecipe(lastModifiedDate, id) {
+function deleteOldRecipe(id, lastModifiedDate) {
     const deleteParams = {
         TableName: process.env['RECIPE_TABLE'],
         Key: {
@@ -77,11 +79,11 @@ function deleteOldRecipe(lastModifiedDate, id) {
 async function retrieveDeletedRecipe(id, lastModifiedDate) {
     let oldRecipe;
     try {
-        oldRecipe = await deleteOldRecipe(lastModifiedDate, id);
+        oldRecipe = await deleteOldRecipe(id, lastModifiedDate);
     } catch (err) {
         try {
-            const updatedLastModifiedDate = await getQueriedRecipe(id);
-            oldRecipe = await deleteOldRecipe(updatedLastModifiedDate, id);
+            const updatedLastModifiedDate = await getQueriedRecipe(id, lastModifiedDate);
+            oldRecipe = await deleteOldRecipe(id, updatedLastModifiedDate);
         } catch (err2) {
             console.log(JSON.stringify(err2));
         }
@@ -98,6 +100,7 @@ async function patchRecipe(id, lastModifiedDate, fileName, isThumbnail = false) 
     }
 
     if (!isThumbnail) { // add file to foodFiles list (or create a new list)
+        // currently never invoked with isThumbnail = false
         if(!oldRecipe.hasOwnProperty('foodFiles')) {
             oldRecipe['foodFiles'] = [fileName];
         } else {
@@ -125,7 +128,7 @@ async function patchRecipe(id, lastModifiedDate, fileName, isThumbnail = false) 
             } 
             else {
                 console.log("Success recipe PUT", data);
-                return resolve(data['Attributes']);
+                return resolve(data.Attributes);
             }
         });
     });

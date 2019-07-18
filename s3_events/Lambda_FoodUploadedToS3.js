@@ -21,6 +21,7 @@ function getQueriedRecipe(recipeId) {
             ":v_key": process.env['RECIPES_PARTITION'],
             ":v_id": recipeId
         },
+        ScanIndexForward: false, // read latest first, possible better performance
         ReturnConsumedCapacity: "TOTAL"
     };
 
@@ -104,6 +105,11 @@ function updateRecipe(lastModifiedDate, id, fileName) {
     return docClient.update(params).promise();
 }
 
+/**
+ * Add fileName to oldRecipe's foodFiles list
+ * @param {any} oldRecipe 
+ * @param {string} fileName 
+ */
 async function patchRecipe(oldRecipe, fileName) {
     const date = dateToString();
 
