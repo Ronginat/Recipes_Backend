@@ -9,6 +9,7 @@ function dateToString() {
 
 function getQueriedRecipe(recipeId, lastModifiedDate) {
     const quey_params = {
+        Limit: 1,
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",

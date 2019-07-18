@@ -72,7 +72,7 @@ function getRecipe(sortKey) {
 
 function getQueriedRecipe(recipeId, lastModifiedDate) {
     const get_params = {
-        /*Limit: 2,*/
+        Limit: 1,
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",

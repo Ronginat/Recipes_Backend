@@ -38,7 +38,7 @@ function getRecipe(lastModifiedDate) {
 
 function getQueriedRecipe(recipeId, lastModifiedDate) {
     const get_params = {
-        /* Limit: 2, */
+        Limit: 1,
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
@@ -178,7 +178,7 @@ exports.handler = async (event, context, callback) => {
         //if (Object.keys(pend.UnprocessedItems).length === 0)
         
     } catch(err) {
-        console.log(err);
+        console.log(JSON.stringify(err));
         //callback(null, setResponse(500, err));
         const { statusCode, message } = err;
         if (message !== undefined && statusCode !== undefined) {

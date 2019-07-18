@@ -225,6 +225,7 @@ exports.handler = async (event, context, callback) => {
             updateUserPostedRecipes(username, newId)
         ]);
         
+        console.log('results', JSON.stringify(results));
         callback(null, setResponse(201, JSON.stringify(results))); // Created
         
     } catch(err) {
