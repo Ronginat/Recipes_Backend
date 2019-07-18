@@ -70,20 +70,22 @@ function getRecipe(sortKey) {
     });
 }
 
-function getQueriedRecipe(recipeId) {
+function getQueriedRecipe(recipeId, lastModifiedDate) {
     const get_params = {
         /*Limit: 2,*/
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "partitionKey = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
+          "#sort": "sort"
         },
         ExpressionAttributeValues: {
             ":v_key": process.env['RECIPES_PARTITION'],
-            ":v_id": recipeId
+            ":v_id": recipeId,
+            ":v_date": lastModifiedDate
         },
-        /*ReturnConsumedCapacity: "TOTAL"*/
+        ReturnConsumedCapacity: "TOTAL"
     };
 
     return new Promise((resolve, reject) => {
@@ -360,7 +362,7 @@ exports.handler = async (event, context, callback) => {
             oldRecipe = await getRecipe(lastModifiedDate);
         } 
         if(!oldRecipe) {
-            oldRecipe = await getQueriedRecipe(id);
+            oldRecipe = await getQueriedRecipe(id, lastModifiedDate);
         }
         console.log("old recipe, " + oldRecipe);
         if(!oldRecipe) {
