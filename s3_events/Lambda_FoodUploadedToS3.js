@@ -11,6 +11,7 @@ function dateToString() {
 
 function getQueriedRecipe(recipeId) {
     const quey_params = {
+        Limit: 1,
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "partitionKey = :v_key",
         FilterExpression: "#id = :v_id",
@@ -78,8 +79,8 @@ function getQueriedRecipe(recipeId) {
 } */
 
 /**
- * Sets foodFiles list without changing sort (lastModifiedDate) attribute.
- * @param {string} fileName Add to foodFiles new list (using DynamoDB SET )
+ * Sets images list without changing sort (lastModifiedDate) attribute.
+ * @param {string} fileName Add to images new list (using DynamoDB SET )
  */
 function updateRecipe(lastModifiedDate, id, fileName) {
     const params = {
@@ -91,7 +92,7 @@ function updateRecipe(lastModifiedDate, id, fileName) {
         UpdateExpression: "SET #images = :v_list",
         ConditionExpression: "#id = :v_id",
         ExpressionAttributeNames: {
-            "#images": "foodFiles",
+            "#images": "images",
             "#id": "id"
         },
         ExpressionAttributeValues: {
@@ -106,21 +107,21 @@ function updateRecipe(lastModifiedDate, id, fileName) {
 }
 
 /**
- * Add fileName to oldRecipe's foodFiles list
+ * Add fileName to oldRecipe's images list
  * @param {any} oldRecipe 
  * @param {string} fileName 
  */
 async function patchRecipe(oldRecipe, fileName) {
     const date = dateToString();
 
-    // add file to foodFiles list (or create a new list)
-    if(!oldRecipe.hasOwnProperty('foodFiles')) {
+    // add file to images list (or create a new list)
+    if(!oldRecipe.hasOwnProperty('images')) {
         // don't change the recipe's date, it'll be updated when the thumbnail is ready
         return await updateRecipe(oldRecipe.sort, oldRecipe.id, fileName);
     } else {
         // no thumbnail will be created, so update the recipe's date now
         const newRecipe = { ...oldRecipe };
-        newRecipe.foodFiles.push(fileName);
+        newRecipe.images.push(fileName);
         newRecipe.sort = date;
         newRecipe.lastModifiedDate = date;
 
@@ -232,16 +233,10 @@ function invokeThumbnailGenerator(payload) {
 }
 
 function decodeID(name) {
-    /* const dirName = process.env['FOLDER'];
-    const dirLength = dirName.length;
-    return name.substring(dirLength + 1, dirLength + 1 + parseInt(process.env['RECIPE_ID_LENGTH'], 10)); */
     return name.split("/")[1].split("--food--")[0];
 }
 
 function decodeFileName(name) {
-    /* const dirName = process.env['FOLDER'];
-    const dirLength = dirName.length;
-    return name.substring(dirLength + 1); */
     return name.split("/")[1];
 }
 
@@ -267,14 +262,14 @@ exports.handler = async (event) => {
             'fileName': fileName,
         };
 
-        // call next lambda to insert the image to foodFiles
+        // call next lambda to insert the image to images list
         //await invokeFoodProcessedUpdateRecipe(updateRecipePayload);
 
         // patch the recipe
         const output = await patchRecipe(recipe, fileName);
         console.log('patch output', JSON.stringify(output));
 
-        if (!recipe.hasOwnProperty('foodFiles')) { // if (!('foodFiles' in recipe))
+        if (!recipe.hasOwnProperty('images')) { // if (!('images' in recipe))
             const generatorOnCompletePayload = { ...updateRecipePayload };
             generatorOnCompletePayload['thumbnail'] = true;
             const thumbnailGeneratorPayload = {

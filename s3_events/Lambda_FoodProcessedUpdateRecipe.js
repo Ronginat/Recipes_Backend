@@ -100,12 +100,14 @@ async function patchRecipe(id, lastModifiedDate, fileName, isThumbnail = false) 
         throw "recipe not found!";
     }
 
-    if (!isThumbnail) { // add file to foodFiles list (or create a new list)
+    if (!isThumbnail) { // add file to images list (or create a new list)
         // currently never invoked with isThumbnail = false
-        if(!oldRecipe.hasOwnProperty('foodFiles')) {
-            oldRecipe['foodFiles'] = [fileName];
+        // because it's taking too long to invoke the lambda and procces the file (more than 1 second)
+        // when uploading multiple images, the recipe record won't update fast enough and ThumbnailGenerator will be invoked
+        if(!oldRecipe.hasOwnProperty('images')) {
+            oldRecipe['images'] = [fileName];
         } else {
-            oldRecipe.foodFiles.push(fileName);
+            oldRecipe.images.push(fileName);
         }
     } else { // add thumbnail to the recipe
         oldRecipe.thumbnail = fileName;
@@ -117,7 +119,8 @@ async function patchRecipe(id, lastModifiedDate, fileName, isThumbnail = false) 
     const putRecipeParams = {
         TableName: process.env['RECIPE_TABLE'],
         Item: oldRecipe,
-        ReturnValues: 'ALL_OLD'
+        ReturnConsumedCapacity: "TOTAL"
+        /* ReturnValues: 'ALL_OLD' */
     };
 
     return new Promise((resolve, reject) => {

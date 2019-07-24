@@ -8,7 +8,7 @@ const params = {
     Limit: process.env['LIMIT'],
     TableName: process.env['TABLE'],
     KeyConditionExpression: "#partition = :v_key AND #sort >= :v_time",
-    ProjectionExpression: "#id, #name, #desc, #created, #modified, #uploader, #thumbnail, #images, #categories, #likes, #deleted",
+    ProjectionExpression: "#id, #name, #desc, #created, #modified, #author, #thumbnail, #images, #categories, #likes, #deleted",
     ExpressionAttributeNames: {
         "#partition": "partitionKey",
         "#sort": "sort",
@@ -17,9 +17,9 @@ const params = {
         "#desc": "description",
         "#created": "creationDate",
         "#modified": "lastModifiedDate",
-        "#uploader": "uploader",
+        "#author": "author",
         "#thumbnail": "thumbnail",
-        "#images": "foodFiles",
+        "#images": "images",
         "#categories": "categories",
         "#likes": "likes",
         "#deleted": "isDeleted"

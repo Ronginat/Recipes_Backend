@@ -11,7 +11,7 @@ const admins = ['admin'];
 const freePatch = ["likes"];
 //const freePatchGetUserName = ["comments"];
 const authPatch = ["name", "description", "categories", "html"];
-const forbidPatch = ["id", "recipeFile", "foodFiles", "createdAt", "partitionKey", "sort", "uploader", "lastModifiedDate"];
+const forbidPatch = ["id", "images", "thumbnail", "createdAt", "partitionKey", "sort", "author", "lastModifiedDate"];
 
 
 function setResponse(status, body){
@@ -34,11 +34,11 @@ function getUser(token){
     return new Promise((resolve, reject) => {
         cognitoidentityserviceprovider.getUser(params, function(err, data) {
             if (err) {
-                console.log(err); // an error occurred
+                console.log(JSON.stringify(err)); // an error occurred
                 return reject(err);
             }
             else {
-                console.log(data); // successful response
+                console.log(JSON.stringify(data)); // successful response
                 return resolve(data.Username);
             }    
         });
@@ -142,8 +142,38 @@ function deleteOldRecipe(lastModified, id) {
     });
 }
 
+/**
+ * Update recipe content (html string) in recipes table at 'content' partition.
+ * @param {string} id id of the recipe
+ * @param {string} html new html content
+ * @param {string} date updated 'lastModifiedDate' date
+ */
+function updateContent(recipeId, html, date) {
+    const params = {
+        TableName: process.env['RECIPE_TABLE'],
+        Key: {
+            partitionKey: process.env['CONTENT_PARTITION'],
+            sort: recipeId
+        },
+        UpdateExpression: "SET #content = :v_content, #modified = :v_date",
+        ExpressionAttributeNames: {
+            "#content": "html",
+            "#modified": "lastModifiedDate"
+        },
+        ExpressionAttributeValues: {
+            ":v_content": html,
+            ":v_date": date
+        },
+        ReturnValues: "ALL_NEW",
+        ReturnConsumedCapacity: "TOTAL"
+    };
+
+    return docClient.update(params).promise();
+}
+
 
 async function patchRecipe(request, oldRecipe, username, date) {
+    let needToDelete = false;
     for(let value in request) {
         switch(value) {
             case "likes":
@@ -151,11 +181,17 @@ async function patchRecipe(request, oldRecipe, username, date) {
                     oldRecipe.likes += 1;
                 if (request[value] === 'unlike')
                 oldRecipe.likes -= 1;
+                needToDelete = true;
                 break;
             case "name":
             case "description":
             case "categories":
                 oldRecipe[value] = request[value];
+                needToDelete = true;
+                break;
+            case "html":
+                const output = await updateContent(oldRecipe.id, request[value], date);
+                console.log('content patch output', JSON.stringify(output));
                 break;
             /* case "description":
                 oldRecipe.description = request[value];
@@ -166,30 +202,34 @@ async function patchRecipe(request, oldRecipe, username, date) {
         }
     }
 
-    console.log('updated recipe: ' + JSON.stringify(oldRecipe));
-    await deleteOldRecipe(oldRecipe.lastModifiedDate, oldRecipe.id);
+    if (needToDelete) {
+        console.log('updated recipe: ' + JSON.stringify(oldRecipe));
+        await deleteOldRecipe(oldRecipe.lastModifiedDate, oldRecipe.id);
 
-    oldRecipe.sort = date;
-    oldRecipe.lastModifiedDate = date;
-    
-    const putRecipeParams = {
-        TableName: process.env['RECIPE_TABLE'],
-        Item: oldRecipe
-    };
+        oldRecipe.sort = date;
+        oldRecipe.lastModifiedDate = date;
+        
+        const putRecipeParams = {
+            TableName: process.env['RECIPE_TABLE'],
+            Item: oldRecipe
+        };
 
-    return new Promise((resolve, reject) => {
-        // Call DynamoDB to add the item to the table
-        docClient.put(putRecipeParams, function(err, data) {
-            if (err) {
-                console.log("Error recipe PUT", err);
-                return reject(err);
-            } 
-            else {
-                console.log("Success recipe PUT", data);
-                return resolve(data);
-            }
+        return new Promise((resolve, reject) => {
+            // Call DynamoDB to add the item to the table
+            docClient.put(putRecipeParams, function(err, data) {
+                if (err) {
+                    console.log("Error recipe PUT", err);
+                    return reject(err);
+                } 
+                else {
+                    console.log("Success recipe PUT", data);
+                    return resolve(data);
+                }
+            });
         });
-    });
+    } else {
+        return Promise.resolve();
+    }
 }
 
 //#endregion PATCH recipe Methods
@@ -255,22 +295,22 @@ function invokePublishLambda(payload) {
 }
 
 /**
- * Trigger notification publisher lambda to notify recipe's uploader about like from any user
+ * Trigger notification publisher lambda to notify recipe's author about like from any user
  * @param {any} recipe - Recipe that some user did like on
  * @param {string} someUser - Name of user who likes a recipe
  */
 async function handlePushNotifications(recipe, someUser) {
-    const recipeUploader = await getUserFromDB(recipe.uploader, false);
-    if(recipeUploader.devices !== undefined) {
-        for(let deviceId in recipeUploader.devices) {
-            const subscriptions = recipeUploader.devices[deviceId].subscriptions;
+    const recipeAuthor = await getUserFromDB(recipe.author, false);
+    if(recipeAuthor.devices !== undefined) {
+        for(let deviceId in recipeAuthor.devices) {
+            const subscriptions = recipeAuthor.devices[deviceId].subscriptions;
             if(subscriptions !== undefined && 
                 subscriptions.likes !== undefined &&
                 subscriptions.likes === true) {
                     await invokePublishLambda({
                         "message": recipe.name,
                         "title": someUser + " likes your recipe",
-                        "target": recipeUploader.devices[deviceId].endpoint,
+                        "target": recipeAuthor.devices[deviceId].endpoint,
                         "id": recipe.id,
                         "channel": "likes"
                     });
@@ -364,7 +404,7 @@ exports.handler = async (event, context, callback) => {
         if(!oldRecipe) {
             oldRecipe = await getQueriedRecipe(id, lastModifiedDate);
         }
-        console.log("old recipe, " + oldRecipe);
+        console.log("old recipe, " + JSON.stringify(oldRecipe));
         if(!oldRecipe) {
             throw {
                 statusCode: 500, // Internal Server Error
@@ -375,10 +415,10 @@ exports.handler = async (event, context, callback) => {
         const username = await getUser(event['headers']['Authorization']);
 
         if(requiredAuth) {
-            //authorization check. only the uploader can change some attributes
+            //authorization check. only the author can change some attributes
             //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
 
-            if(username !== oldRecipe.uploader || !admins.includes(username)) {
+            if(username !== oldRecipe.author || !admins.includes(username)) {
                 throw {
                     statusCode: 500, // Unauthorized
                     message: "not authorized to change requested attributes!"
@@ -406,12 +446,13 @@ exports.handler = async (event, context, callback) => {
 
 
             if(request['likes'] === 'like') {
-                //send push notification to the uploader
+                //send push notification to the author
                 await handlePushNotifications(oldRecipe, username);
             }
         }
     }
     catch(err) {
+        console.log('err', JSON.stringify(err));
         //callback(err);
         //callback(null, setResponse(500, err));
         /* const { code, message } = err;

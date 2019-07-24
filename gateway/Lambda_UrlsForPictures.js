@@ -154,16 +154,16 @@ exports.handler = async (event, context, callback) => {
         let recipeItem = undefined;
         if(lastModifiedDate) {
             recipeItem = await getRecipe(lastModifiedDate);
-        } 
+        }
         if(!recipeItem) {
-            recipeItem = await getQueriedRecipe(id, lastModifiedDate);
+            recipeItem = await getQueriedRecipe(id, lastModifiedDate ? lastModifiedDate : "0");
         }
 
         if(recipeItem) {
             console.log('generating names');
             let fileNames = generateFileNames(numOfFiles, recipeItem, queryParams['extension']);
-            console.log("files\n" + fileNames);
-            //let pend = await addToPending(eventBody['numOfFiles'], recipeItem, fileNames);
+            console.log("files", JSON.stringify(fileNames));
+
             console.log('signing urls');
             const urls = signUrls(fileNames);
 

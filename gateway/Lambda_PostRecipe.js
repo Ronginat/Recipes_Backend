@@ -50,7 +50,7 @@ function putRecipe(recipe, date) {
             'id' : recipe.id,
             'name' : recipe.name,
             'description': recipe.description,
-            'uploader': recipe.uploader,
+            'author': recipe.author,
             'categories': recipe.categories,
             'lastModifiedDate': date, // duplicate of sort key, convenience attribute 
             'creationDate': date,
@@ -115,7 +115,7 @@ function putContent(recipe) {
 function invokePublishLambda(recipe) {
     const payload = {
         "message": "click to view the recipe",
-        "title": recipe.name + ", by " + recipe.uploader,
+        "title": recipe.name + ", by " + recipe.author,
         "topic": process.env['NEW_RECIPE_TOPIC'],
         "id": recipe.id,
         "channel": "newRecipes",
@@ -205,8 +205,8 @@ exports.handler = async (event, context, callback) => {
         checkInput(eventBody); // will throw exception if needed
         //const { username, sub } = await getUser(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         const username = await getUser(event['headers']['Authorization']);
-        if (eventBody.uploader === undefined || !admins.includes(username)) {
-            eventBody['uploader'] = username;
+        if (eventBody.author === undefined || !admins.includes(username)) {
+            eventBody['author'] = username;
         }
         const newId = nanoid(12);
         eventBody.id = newId;
@@ -218,7 +218,7 @@ exports.handler = async (event, context, callback) => {
 
         results['id'] = eventBody.id;
         results['lastModifiedDate'] = eventBody.lastModifiedDate;
-        eventBody.uploader = username;
+        eventBody.author = username;
 
         await Promise.all([
             invokePublishLambda(eventBody),
