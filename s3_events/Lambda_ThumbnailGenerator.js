@@ -128,7 +128,7 @@ function invokeNextLambda(lambdaName, payload) {
 exports.handler = async (event, context) => {
     console.log(JSON.stringify(event));
     try {
-        const fileType = event.fileName.split('.')[1];
+        const fileType = event.fileName.split('.').pop();
         if (!ALLOWED_FILETYPES.includes(fileType))
             throw "file extension not supported, " + event.fileName;
         const s3_response = await download(event.filePath/* event.fileName, event.fileDir */);

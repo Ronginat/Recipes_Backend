@@ -8,8 +8,8 @@ function dateToString() {
 }
 
 function getQueriedRecipe(recipeId, lastModifiedDate) {
-    const quey_params = {
-        Limit: 1,
+    const params = {
+        Limit: 20,
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
@@ -22,11 +22,13 @@ function getQueriedRecipe(recipeId, lastModifiedDate) {
             ":v_id": recipeId,
             ":v_date": lastModifiedDate
         },
+        ScanIndexForward: false, // read latest first, possible better performance
+        // in case the deleteOldRecipe didn't work, the recipe probably changed very recently
         ReturnConsumedCapacity: "TOTAL"
     };
 
     return new Promise((resolve, reject) => {
-        docClient.query(quey_params, (err, data) => {
+        docClient.query(params, (err, data) => {
             if (err) {
                 console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);

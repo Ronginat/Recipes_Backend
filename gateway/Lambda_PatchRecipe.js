@@ -72,7 +72,7 @@ function getRecipe(sortKey) {
 
 function getQueriedRecipe(recipeId, lastModifiedDate) {
     const get_params = {
-        Limit: 1,
+        Limit: 30,
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
@@ -85,6 +85,8 @@ function getQueriedRecipe(recipeId, lastModifiedDate) {
             ":v_id": recipeId,
             ":v_date": lastModifiedDate
         },
+        ScanIndexForward: false, // read latest first, possible better performance
+        // in case the getRecipe didn't work, the recipe probably changed very recently
         ReturnConsumedCapacity: "TOTAL"
     };
 
@@ -418,7 +420,7 @@ exports.handler = async (event, context, callback) => {
             //authorization check. only the author can change some attributes
             //username = await getUsername(event['multiValueHeaders']['Authorization'][0]['AccessToken']);
 
-            if(username !== oldRecipe.author || !admins.includes(username)) {
+            if(username !== oldRecipe.author && !admins.includes(username)) {
                 throw {
                     statusCode: 500, // Unauthorized
                     message: "not authorized to change requested attributes!"

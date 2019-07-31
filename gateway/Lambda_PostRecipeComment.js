@@ -47,23 +47,51 @@ function getUser(token){
     });
 }
 
-function getQueriedRecipe(recipeId) {
-    const quey_params = {
+function getRecipe(lastModifiedDate) {
+    const get_params = {
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "partitionKey = :v_key",
+        Key: {
+            partitionKey: process.env['RECIPES_PARTITION'],
+            sort: lastModifiedDate // lastModifiedDate
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        docClient.get(get_params, (err, data) => {
+            if (err) {
+                console.error("Couldn't get the recipe. Error JSON:", JSON.stringify(err, null, 2));
+                return reject(err);
+            } else {
+                // print all the data
+                console.log("Get succeeded. ", JSON.stringify(data));
+                return resolve(data.Item);
+            }
+        });
+    });
+}
+
+function getQueriedRecipe(recipeId, lastModifiedDate) {
+    const query_params = {
+        Limit: 20,
+        TableName: process.env['RECIPE_TABLE'],
+        KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
-          "#id":  "id"
+          "#id":  "id",
+          "#sort": "sort"
         },
         ExpressionAttributeValues: {
             ":v_key": process.env['RECIPES_PARTITION'],
-            ":v_id": recipeId
+            ":v_id": recipeId,
+            ":v_date": lastModifiedDate
         },
+        ScanIndexForward: false, // read latest first, possible better performance
+        // in case the getRecipe didn't work, the recipe probably changed very recently
         ReturnConsumedCapacity: "TOTAL"
     };
 
     return new Promise((resolve, reject) => {
-        docClient.query(quey_params, (err, data) => {
+        docClient.query(query_params, (err, data) => {
             if (err) {
                 console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);
@@ -169,20 +197,22 @@ function invokePublishLambda(payload) {
     });
 }
 
-// push notification to the uploader of this recipe (recipeUploader) about new comment by a user (someUser)
-async function handlePushNotifications(id, someUser) {
-    const recipe = await getQueriedRecipe(id);
-    const recipeUploader = await getUserFromDB(recipe.uploader);
-    if(recipeUploader.devices !== undefined) {
-        for(let deviceId in recipeUploader.devices) {
-            const subscriptions = recipeUploader.devices[deviceId].subscriptions;
+// push notification to the author of this recipe (recipeAuthor) about new comment by a user (someUser)
+async function handlePushNotifications(id, lastModifiedDate, someUser) {
+    let recipe = await getRecipe(lastModifiedDate);
+    if (!recipe)
+        recipe = await getQueriedRecipe(id, lastModifiedDate);
+    const recipeAuthor = await getUserFromDB(recipe.author);
+    if(recipeAuthor.devices !== undefined) {
+        for(let deviceId in recipeAuthor.devices) {
+            const subscriptions = recipeAuthor.devices[deviceId].subscriptions;
             if(subscriptions !== undefined && 
                 subscriptions.comments !== undefined &&
                 subscriptions.comments === true) {
                     await invokePublishLambda({
                         "message": "click to view the comment",
                         "title": someUser + " commented on your recipe",
-                        "target": recipeUploader.devices[deviceId].endpoint,
+                        "target": recipeAuthor.devices[deviceId].endpoint,
                         "id": recipe.id,
                         "channel": "comments"
                     });
@@ -195,7 +225,7 @@ async function handlePushNotifications(id, someUser) {
 
 
 exports.handler = async (event, context, callback) => {
-    let id = undefined, posted = false;
+    let id = undefined, posted = false, lastModifiedDate = undefined;
     //console.log(event['body']);
 
     try {
@@ -206,6 +236,9 @@ exports.handler = async (event, context, callback) => {
                 statusCode: 400, // Bad Request
                 message: "request must contain recipe id"
             };
+        }
+        if (event['queryStringParameters'] && event['queryStringParameters']['lastModifiedDate']) {
+            lastModifiedDate = event['queryStringParameters']['lastModifiedDate'];
         }
 
         const request = JSON.parse(event['body']);
@@ -219,7 +252,7 @@ exports.handler = async (event, context, callback) => {
 
         //#region PublishSNS
         
-        await handlePushNotifications(id, username);
+        await handlePushNotifications(id, lastModifiedDate ? lastModifiedDate : "0", username);
 
         //#endregion PublishSNS
     }

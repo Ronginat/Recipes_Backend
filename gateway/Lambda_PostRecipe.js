@@ -205,7 +205,7 @@ exports.handler = async (event, context, callback) => {
         checkInput(eventBody); // will throw exception if needed
         //const { username, sub } = await getUser(event['multyValueHeaders']['Authorization'][0]['AccessToken']);
         const username = await getUser(event['headers']['Authorization']);
-        if (eventBody.author === undefined || !admins.includes(username)) {
+        if (!eventBody.author || !admins.includes(username)) {
             eventBody['author'] = username;
         }
         const newId = nanoid(12);
@@ -218,11 +218,11 @@ exports.handler = async (event, context, callback) => {
 
         results['id'] = eventBody.id;
         results['lastModifiedDate'] = eventBody.lastModifiedDate;
-        eventBody.author = username;
+        //eventBody.author = username;
 
         await Promise.all([
             invokePublishLambda(eventBody),
-            updateUserPostedRecipes(username, newId)
+            updateUserPostedRecipes(eventBody.author, newId)
         ]);
         
         console.log('results', JSON.stringify(results));

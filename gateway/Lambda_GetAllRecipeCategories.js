@@ -76,12 +76,33 @@ function scanTable(){
 }
 
 function deleteLastModifiedItem(scan) {
-  let results = [];
-  for(let i=0; i < scan.length; i++) {
+  const results = [];
+
+  scan.forEach(item => {
+    switch(item.name) {
+        case "כללי":
+            results[0] = item;
+            break;
+        case "חגים ומועדים":
+            results[1] = item;
+            break;
+        case "קינוחים":
+            results[2] = item;
+            break;
+        case "מאפים":
+            results[3] = item;
+            break;
+        case "כשרות":
+            results[4] = item;
+            break;
+    }
+  });
+  return results;
+  /* for(let i=0; i < scan.length; i++) {
     if(scan[i]['name'] !== lastModifiedKey)
       results.push(scan[i]);
-  }
-  return results;
+  } */
+  
   // scan.forEach(element => {
   //   if(element['name'] === 'last-modified')
   //     delete scan.element;

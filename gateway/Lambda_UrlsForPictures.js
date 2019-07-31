@@ -13,6 +13,15 @@ function setResponse(status, body){
     };
 }
 
+function dateToShortDate(dateString) {
+    const date = new Date(dateString);
+    const day = date.getUTCDate();
+    const month = date.getUTCMonth() + 1;
+    const year = date.getUTCFullYear();
+
+    return '' + year + '-' + (month <= 9 ? '0' + month : month) + '-' + (day <= 9 ? '0' + day : day);
+}
+
 function getRecipe(lastModifiedDate) {
     const get_params = {
         TableName: process.env['RECIPE_TABLE'],
@@ -37,8 +46,8 @@ function getRecipe(lastModifiedDate) {
 }
 
 function getQueriedRecipe(recipeId, lastModifiedDate) {
-    const get_params = {
-        Limit: 1,
+    const params = {
+        Limit: 20,
         TableName: process.env['RECIPE_TABLE'],
         KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
@@ -51,11 +60,13 @@ function getQueriedRecipe(recipeId, lastModifiedDate) {
             ":v_id": recipeId,
             ":v_date": lastModifiedDate
         },
+        ScanIndexForward: false, // read latest first, possible better performance
+        // in case the getRecipe didn't work, the recipe probably changed very recently
         ReturnConsumedCapacity: "TOTAL"
     };
 
     return new Promise((resolve, reject) => {
-        docClient.query(get_params, (err, data) => {
+        docClient.query(params, (err, data) => {
             if (err) {
                 console.error("Unable to query the table. Error JSON:", JSON.stringify(err, null, 2));
                 return reject(err);
@@ -87,10 +98,12 @@ function generateFileNames(numOfFiles, recipe, extension) {
     }
     else {
         let files = [];
+        const shortDate = dateToShortDate(recipe.lastModifiedDate);
         for(let i = 0; i < numOfFiles; i++){
             const rand = Math.floor((1 + Math.random()) * 0x100) // add 3 random characters for the case of 2 users requesting urls in the same time
             .toString(16);
-            files[i] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + rand + "." + extension;
+            //files[i] = process.env['FOLDER'] + "/" + recipe.id + "--food--" + rand + "." + extension;
+            files[i] = process.env['FOLDER'] + "/" + recipe.id + "." + shortDate + "." + rand + "." + extension;
         }
         return files;
     }
@@ -162,7 +175,7 @@ exports.handler = async (event, context, callback) => {
         if(recipeItem) {
             console.log('generating names');
             let fileNames = generateFileNames(numOfFiles, recipeItem, queryParams['extension']);
-            console.log("files", JSON.stringify(fileNames));
+            console.log('files', JSON.stringify(fileNames));
 
             console.log('signing urls');
             const urls = signUrls(fileNames);

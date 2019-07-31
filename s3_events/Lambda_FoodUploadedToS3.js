@@ -9,20 +9,22 @@ function dateToString() {
     return new Date().toISOString();
 }
 
-function getQueriedRecipe(recipeId) {
+function getQueriedRecipe(recipeId, date) {
     const quey_params = {
-        Limit: 1,
+        Limit: 20,
         TableName: process.env['RECIPE_TABLE'],
-        KeyConditionExpression: "partitionKey = :v_key",
+        KeyConditionExpression: "partitionKey = :v_key AND #sort >= :v_date",
         FilterExpression: "#id = :v_id",
         ExpressionAttributeNames: {
           "#id":  "id",
+          "#sort": "sort"
         },
         ExpressionAttributeValues: {
             ":v_key": process.env['RECIPES_PARTITION'],
-            ":v_id": recipeId
+            ":v_id": recipeId,
+            ":v_date": date
         },
-        ScanIndexForward: false, // read latest first, possible better performance
+        //ScanIndexForward: false, // read latest first, possible better performance
         ReturnConsumedCapacity: "TOTAL"
     };
 
@@ -232,12 +234,16 @@ function invokeThumbnailGenerator(payload) {
     // });
 }
 
-function decodeID(name) {
-    return name.split("/")[1].split("--food--")[0];
-}
-
 function decodeFileName(name) {
     return name.split("/")[1];
+}
+
+function decodeID(fileName) {
+    return fileName.split(".")[0];
+}
+
+function decodeDate(fileName) {
+    return fileName.split(".")[1];
 }
 
 
@@ -248,9 +254,10 @@ exports.handler = async (event) => {
 
     console.log(JSON.stringify(record));
     try {
-        const id = decodeID(uploadedName);
         const fileName = decodeFileName(uploadedName);
-        const recipe = await getQueriedRecipe(id);
+        const id = decodeID(fileName);
+        const date = decodeDate(fileName);
+        const recipe = await getQueriedRecipe(id, date);
 
         if (!recipe) {
             throw "recipe not found!";
