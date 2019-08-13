@@ -224,7 +224,7 @@ function updateEndpointToken(token, endpoint) {
                 reject(err);
             }
             else {
-                console.log("Success update Endpoint, " + data);
+                console.log("Success update Endpoint, " + JSON.stringify(data));
                 resolve(data);
             }
         });
@@ -253,7 +253,7 @@ exports.handler = async (event, context, callback) => {
                 platform = event['queryStringParameters']['platform'];
             }
             if(event['queryStringParameters']['version']) {
-                version = event['queryStringParameters']['version'];
+                version = parseInt(event['queryStringParameters']['version'], 10);
             }
             if(event['queryStringParameters']['app_version']) {
                 appVersion = event['queryStringParameters']['app_version'];

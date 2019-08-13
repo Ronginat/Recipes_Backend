@@ -114,8 +114,9 @@ function putContent(recipe) {
  */
 function invokePublishLambda(recipe) {
     const payload = {
-        "message": "click to view the recipe",
-        "title": recipe.name + ", by " + recipe.author,
+        "message": recipe.description,//"click to view the recipe",
+        "title": recipe.name,// recipe.name + ", by " + recipe.author,
+        "author": recipe.author,
         "topic": process.env['NEW_RECIPE_TOPIC'],
         "id": recipe.id,
         "channel": "newRecipes",

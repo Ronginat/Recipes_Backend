@@ -198,7 +198,7 @@ function invokePublishLambda(payload) {
 }
 
 // push notification to the author of this recipe (recipeAuthor) about new comment by a user (someUser)
-async function handlePushNotifications(id, lastModifiedDate, someUser) {
+async function handlePushNotifications(id, lastModifiedDate, someUser, comment) {
     let recipe = await getRecipe(lastModifiedDate);
     if (!recipe)
         recipe = await getQueriedRecipe(id, lastModifiedDate);
@@ -210,8 +210,8 @@ async function handlePushNotifications(id, lastModifiedDate, someUser) {
                 subscriptions.comments !== undefined &&
                 subscriptions.comments === true) {
                     await invokePublishLambda({
-                        "message": "click to view the comment",
-                        "title": someUser + " commented on your recipe",
+                        "message": comment,//"click to view the comment",
+                        "title": someUser,// + " commented on your recipe",
                         "target": recipeAuthor.devices[deviceId].endpoint,
                         "id": recipe.id,
                         "channel": "comments"
@@ -252,7 +252,7 @@ exports.handler = async (event, context, callback) => {
 
         //#region PublishSNS
         
-        await handlePushNotifications(id, lastModifiedDate ? lastModifiedDate : "0", username);
+        await handlePushNotifications(id, lastModifiedDate ? lastModifiedDate : "0", username, request.comment);
 
         //#endregion PublishSNS
     }

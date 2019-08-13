@@ -310,8 +310,9 @@ async function handlePushNotifications(recipe, someUser) {
                 subscriptions.likes !== undefined &&
                 subscriptions.likes === true) {
                     await invokePublishLambda({
-                        "message": recipe.name,
-                        "title": someUser + " likes your recipe",
+                        //"message": recipe.name,
+                        "title": recipe.name,// + " likes your recipe",
+                        "author": someUser,
                         "target": recipeAuthor.devices[deviceId].endpoint,
                         "id": recipe.id,
                         "channel": "likes"
